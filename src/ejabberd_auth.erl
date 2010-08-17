@@ -246,20 +246,25 @@ check_password_with_authmodule(User, AuthzId, Server, Password, Digest, DigestGe
                 {_, {is_banned, BanReason}} ->
                     {false, 'account-disabled', BanReason};
                 {LAuthzId, _} ->
-                    untag_stop(
-                      lists:foldl(
-                        fun(Mod, false) ->
-                                case db_check_password(
-                                       LUser, LAuthzId, LServer, Password,
-                                       Digest, DigestGen, Mod) of
-                                    true -> {true, Mod};
-                                    false -> false;
-                                    {stop, true} -> {stop, {true, Mod}};
-                                    {stop, false} -> {stop, false}
-                                end;
-                           (_, Acc) ->
-                                Acc
-                        end, false, auth_modules(LServer)))
+		    case handle_automatic_registration(User, Server, Password) of
+			ok ->
+			    untag_stop(
+			      lists:foldl(
+				fun(Mod, false) ->
+					case db_check_password(
+					       LUser, LAuthzId, LServer, Password,
+					       Digest, DigestGen, Mod) of
+					    true -> {true, Mod};
+					    false -> false;
+					    {stop, true} -> {stop, {true, Mod}};
+					    {stop, false} -> {stop, false}
+					end;
+				   (_, Acc) ->
+					Acc
+				end, false, auth_modules(LServer)));
+			error ->
+			    false
+		    end
 	    end;
 	_ ->
 	    false
@@ -918,6 +923,17 @@ match_passwords(ProvidedPassword, ValidPassword, Digest, DigestFun) ->
 	    true;
        true ->
 	    ValidPassword == ProvidedPassword andalso ProvidedPassword /= <<"">>
+    end.
+
+-spec handle_automatic_registration(binary(), binary(), binary()) -> ok | error.
+handle_automatic_registration(User, Server, Password) ->
+    case try_register(User, Server, Password) of
+	ok ->
+	    ok;
+	{error, exists} ->
+	    ok;
+	{error, _Reason} ->
+	    error
     end.
 
 -spec validate_credentials(binary(), binary()) ->
