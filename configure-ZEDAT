@@ -1,0 +1,68 @@
+#!/bin/sh
+
+set -e
+set -u
+
+prefix="$HOME/server"
+
+export PATH="$HOME/bin:$HOME/opt/erlang/bin:/usr/local/bin:/bin:/usr/bin"
+export CFLAGS='-O2 -pipe -march=native'
+export CXXFLAGS="$CFLAGS"
+
+./autogen.sh
+./configure                                     \
+    "--prefix=$prefix"                          \
+    "--with-erlang=$HOME/opt/erlang"            \
+    '--disable-debug'                           \
+    '--disable-elixir'                          \
+    '--disable-full-xml'                        \
+    '--disable-mssql'                           \
+    '--disable-mysql'                           \
+    '--disable-odbc'                            \
+    '--disable-pam'                             \
+    '--disable-roster-gateway-workaround'       \
+    '--disable-sip'                             \
+    '--disable-tools'                           \
+    '--enable-erlang-version-check'             \
+    '--enable-new-sql-schema'                   \
+    '--enable-pgsql'                            \
+    '--enable-stun'                             \
+    '--enable-zlib'                             \
+    "--enable-user=$(whoami)" "$@"
+make
+make prod
+
+if [ $(ejabberdctl modules_installed >'/dev/null' 2>&1 | wc -l) -gt 0 ]
+then
+	read -p 'Update "ejabberd-contrib" modules? (y/n) [n] ' response
+	response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+
+	if [ "$response" = 'y' ] || [ "$response" = 'yes' ] ||
+	   [ "$response" = 'j' ] || [ "$response" = 'ja' ]
+	then
+		if ejabberdctl status >'/dev/null' 2>&1
+		then
+			ejabberdctl modules-update-specs
+			ejabberdctl modules-installed | while read module description
+			do
+				ejabberdctl module-upgrade "$module"
+			done
+		else
+			echo >&2 'ejabberd seems not to be running.'
+		fi
+	fi
+fi
+
+read -p 'Install new ejabberd version? (y/n) [n] ' response
+response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+
+if [ "$response" = 'y' ] || [ "$response" = 'yes' ] ||
+   [ "$response" = 'j' ] || [ "$response" = 'ja' ]
+then
+	ejabberdctl status && ejabberdctl stop && ejabberdctl stopped
+	rm -rf "$prefix"
+	mkdir "$prefix"
+	tar -C "$prefix" -xpf '_build/prod/rel/ejabberd/ejabberd-2'*'.tar.gz'
+	install tools/captcha.sh "$HOME/lib"
+	ejabberdctl start && ejabberdctl started && ejabberdctl status
+fi
