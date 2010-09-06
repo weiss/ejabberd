@@ -72,7 +72,7 @@ done
 
 # define erl parameters
 ERLANG_OPTS="+K $POLL +P $ERL_PROCESSES $ERL_OPTIONS"
-if [ -n "$FIREWALL_WINDOW" ] ; then
+if [ -n "$FIREWALL_WINDOW" -a '(' "$ARGS" = ' start' -o "$ARGS" = ' live' ')' ] ; then
     ERLANG_OPTS="$ERLANG_OPTS -kernel inet_dist_listen_min ${FIREWALL_WINDOW%-*} inet_dist_listen_max ${FIREWALL_WINDOW#*-}"
 fi
 if [ -n "$INET_DIST_INTERFACE" ] ; then
