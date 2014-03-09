@@ -1094,6 +1094,12 @@ wait_for_session({xmlstreamerror, _}, StateData) ->
 wait_for_session(closed, StateData) ->
     {stop, normal, StateData}.
 
+session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
+    when Name == <<"enable">>;
+	 Name == <<"a">>;
+	 Name == <<"r">> ->
+    ManageStream = StateData#state.manage_stream,
+    fsm_next_state(session_established, ManageStream(El, StateData));
 session_established({xmlstreamelement, El},
 		    StateData) ->
     FromJID = StateData#state.jid,
@@ -2431,6 +2437,7 @@ negotiate_stream_mgmt(_El, StateData) when StateData#state.resource == <<"">> ->
     send_element(StateData, ?SM_UNEXPECTED_REQUEST),
     StateData;
 negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
+    ?DEBUG("Received an XEP-0198 <~s/> element", [Name]),
     case xml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_STREAM_MGMT ->
 	  case Name of
@@ -2457,20 +2464,36 @@ negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 	  StateData
     end.
 
-handle_stream_mgmt(#xmlel{name = Name, attrs = Attrs} = El, StateData) ->
+handle_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
+    ?DEBUG("Received an XEP-0198 <~s/> element", [Name]),
     case xml:get_attr_s(<<"xmlns">>, Attrs) of
       ?NS_STREAM_MGMT ->
 	  case Name of
 	    <<"r">> ->
-		NumStanzasIn = jlib:integer_to_binary(StateData#state.n_stanzas_in),
+		H = jlib:integer_to_binary(StateData#state.n_stanzas_in),
 		Response = #xmlel{name = <<"a">>,
 				  attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT},
-					   {<<"h">>, NumStanzasIn}],
+					   {<<"h">>, H}],
 				  children = []},
 		send_element(StateData, Response),
 		StateData;
 	    <<"a">> ->
-		process_ack(StateData, El);
+		case catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs)) of
+		  H when is_integer(H), H >= 0 ->
+		      JID = StateData#state.jid,
+		      NumStanzasOut = StateData#state.n_stanzas_out,
+		      if H > NumStanzasOut ->
+			     ?WARNING_MSG("~s ACKed ~B stanzas, but we only sent ~B",
+					  [JID, H, NumStanzasOut]),
+			     StateData;
+			 true ->
+			     ?DEBUG("~s acknowledged ~B of ~B stanzas",
+				    [JID, H, NumStanzasOut]),
+			     Q = queue_drop_while(fun({N, _El}) -> N =< H end,
+						  StateData#state.pending_queue),
+			     StateData#state{pending_queue = Q}
+		      end
+		end;
 	    _ ->
 		Response = if Name == <<"enable">> ->
 				  ?SM_UNEXPECTED_REQUEST;
@@ -2482,24 +2505,6 @@ handle_stream_mgmt(#xmlel{name = Name, attrs = Attrs} = El, StateData) ->
 	  end;
       _ ->
 	  send_element(StateData, ?SM_UNSUPPORTED_VERSION),
-	  StateData
-    end.
-
-process_ack(StateData, #xmlel{attrs = Attrs}) ->
-    case catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs)) of
-      H when is_integer(H), H >= 0 ->
-	  if H > StateData#state.n_stanzas_out ->
-		 ?WARNING_MSG("~s acknowledged ~B stanzas, but we only sent ~B",
-			      [StateData#state.jid, H, StateData#state.n_stanzas_out]),
-		 StateData;
-	     true ->
-		 Q = queue_drop_while(fun({N, _El}) -> N =< H end,
-				      StateData#state.pending_queue),
-		 StateData#state{pending_queue = Q}
-	  end;
-      _ ->
-	  ?WARNING_MSG("Ignoring invalid ACK element from ~s",
-		       [jlib:jid_to_string(StateData#state.jid)]),
 	  StateData
     end.
 
@@ -2520,9 +2525,9 @@ send_stanza_and_ack_req(StateData, Stanza) ->
     AckReq = #xmlel{name = <<"r">>,
 		    attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT}],
 		    children = []},
-    StanzaS = xml:element_to_string(Stanza),
-    AckReqS = xml:element_to_string(AckReq),
-    send_text(StateData, iolist_to_binary([StanzaS, AckReqS])).
+    StanzaS = xml:element_to_binary(Stanza),
+    AckReqS = xml:element_to_binary(AckReq),
+    send_text(StateData, [StanzaS, AckReqS]).
 
 add_to_pending_queue(StateData, El) ->
     NewState = limit_queue_length(StateData),
