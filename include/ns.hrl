@@ -135,7 +135,6 @@
 -define(NS_FEATURE_MSGOFFLINE, <<"msgoffline">>).
 -define(NS_COMPRESS,
 	<<"http://jabber.org/protocol/compress">>).
--define(NS_STREAM_MGMT,  <<"urn:xmpp:sm:2">>).
 -define(NS_CAPS, <<"http://jabber.org/protocol/caps">>).
 -define(NS_SHIM, <<"http://jabber.org/protocol/shim">>).
 -define(NS_ADDRESS,
@@ -145,3 +144,5 @@
 -define(NS_MEDIA, <<"urn:xmpp:media-element">>).
 -define(NS_BOB, <<"urn:xmpp:bob">>).
 -define(NS_PING, <<"urn:xmpp:ping">>).
+-define(NS_STREAM_MGMT_2,  <<"urn:xmpp:sm:2">>).
+-define(NS_STREAM_MGMT_3,  <<"urn:xmpp:sm:3">>).

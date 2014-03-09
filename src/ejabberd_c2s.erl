@@ -108,11 +108,11 @@
 		auth_module = unknown,
 		ip,
 		aux_fields = [],
-		stream_mgmt_enabled = false,
 		manage_stream = fun negotiate_stream_mgmt/2,
-		pending_queue = queue:new(),
 		n_stanzas_in = 0,
 		n_stanzas_out = 0,
+		pending_queue,
+		sm_xmlns,
 		lang}).
 
 %-define(DBGFSM, true).
@@ -161,20 +161,32 @@
 
 -define(INVALID_FROM, ?SERR_INVALID_FROM).
 
-%% XEP-0198: <failed/> elements
+%% XEP-0198:
 
--define(SM_FAILED(Condition),
+-define(IS_SM_TAG(Name),
+	Name == <<"enable">>;
+	Name == <<"a">>;
+	Name == <<"r">>).
+
+-define(IS_SUPPORTED_SM_XMLNS(Xmlns),
+	Xmlns == ?NS_STREAM_MGMT_2;
+	Xmlns == ?NS_STREAM_MGMT_3).
+
+-define(SM_FAILED(Condition, Xmlns),
 	#xmlel{name = <<"failed">>,
-	       attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT}],
+	       attrs = [{<<"xmlns">>, Xmlns}],
 	       children = [#xmlel{name = Condition,
 				  attrs = [{<<"xmlns">>, ?NS_STANZAS}],
 				  children = []}]}).
 
--define(SM_BAD_REQUEST, ?SM_FAILED(<<"bad-request">>)).
+-define(SM_BAD_REQUEST(Xmlns),
+	?SM_FAILED(<<"bad-request">>, Xmlns)).
 
--define(SM_UNEXPECTED_REQUEST, ?SM_FAILED(<<"unexpected-request">>)).
+-define(SM_UNEXPECTED_REQUEST(Xmlns),
+	?SM_FAILED(<<"unexpected-request">>, Xmlns)).
 
--define(SM_UNSUPPORTED_VERSION, ?SM_FAILED(<<"unsupported-version">>)).
+-define(SM_UNSUPPORTED_VERSION(Xmlns),
+	?SM_FAILED(<<"unsupported-version">>, Xmlns)).
 
 %%%----------------------------------------------------------------------
 %%% API
@@ -428,7 +440,10 @@ wait_for_stream({xmlstreamstart, _Name, Attrs}, StateData) ->
 								attrs = [{<<"xmlns">>, ?NS_SESSION}],
 								children = []},
 							    #xmlel{name = <<"sm">>,
-								attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT}],
+								attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT_2}],
+								children = []},
+							    #xmlel{name = <<"sm">>,
+								attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT_3}],
 								children = []}]
 							    ++
 							    RosterVersioningFeature ++
@@ -495,11 +510,8 @@ wait_for_stream(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_auth({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when Name == <<"enable">>;
-	 Name == <<"a">>;
-	 Name == <<"r">> ->
-    ManageStream = StateData#state.manage_stream,
-    fsm_next_state(wait_for_auth, ManageStream(El, StateData));
+    when ?IS_SM_TAG(Name) ->
+    fsm_next_state(wait_for_auth, (StateData#state.manage_stream)(El, StateData));
 wait_for_auth({xmlstreamelement, El}, StateData) ->
     case is_auth_packet(El) of
       {auth, _ID, get, {U, _, _, _}} ->
@@ -647,11 +659,8 @@ wait_for_auth(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_feature_request({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when Name == <<"enable">>;
-	 Name == <<"a">>;
-	 Name == <<"r">> ->
-    ManageStream = StateData#state.manage_stream,
-    fsm_next_state(wait_for_feature_request, ManageStream(El, StateData));
+    when ?IS_SM_TAG(Name) ->
+    fsm_next_state(wait_for_feature_request, (StateData#state.manage_stream)(El, StateData));
 wait_for_feature_request({xmlstreamelement, El},
 			 StateData) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} = El,
@@ -818,11 +827,8 @@ wait_for_feature_request(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_sasl_response({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when Name == <<"enable">>;
-	 Name == <<"a">>;
-	 Name == <<"r">> ->
-    ManageStream = StateData#state.manage_stream,
-    fsm_next_state(wait_for_sasl_response, ManageStream(El, StateData));
+    when ?IS_SM_TAG(Name) ->
+    fsm_next_state(wait_for_sasl_response, (StateData#state.manage_stream)(El, StateData));
 wait_for_sasl_response({xmlstreamelement, El},
 		       StateData) ->
     #xmlel{name = Name, attrs = Attrs, children = Els} = El,
@@ -954,11 +960,8 @@ resource_conflict_action(U, S, R) ->
     end.
 
 wait_for_bind({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when Name == <<"enable">>;
-	 Name == <<"a">>;
-	 Name == <<"r">> ->
-    ManageStream = StateData#state.manage_stream,
-    fsm_next_state(wait_for_bind, ManageStream(El, StateData));
+    when ?IS_SM_TAG(Name) ->
+    fsm_next_state(wait_for_bind, (StateData#state.manage_stream)(El, StateData));
 wait_for_bind({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
       #iq{type = set, xmlns = ?NS_BIND, sub_el = SubEl} =
@@ -1021,11 +1024,8 @@ wait_for_bind(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_session({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when Name == <<"enable">>;
-	 Name == <<"a">>;
-	 Name == <<"r">> ->
-    ManageStream = StateData#state.manage_stream,
-    fsm_next_state(wait_for_session, ManageStream(El, StateData));
+    when ?IS_SM_TAG(Name) ->
+    fsm_next_state(wait_for_session, (StateData#state.manage_stream)(El, StateData));
 wait_for_session({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
 	#iq{type = set, xmlns = ?NS_SESSION} ->
@@ -1039,29 +1039,29 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 			      [StateData#state.socket,
 			       jlib:jid_to_string(JID)]),
                     Res = jlib:make_result_iq_reply(El#xmlel{children = []}),
-		    send_element(StateData, Res),
-		    change_shaper(StateData, JID),
+		    NewState = send_stanza(StateData, Res),
+		    change_shaper(NewState, JID),
 		    {Fs, Ts} = ejabberd_hooks:run_fold(
 				 roster_get_subscription_lists,
-				 StateData#state.server,
+				 NewState#state.server,
 				 {[], []},
-				 [U, StateData#state.server]),
+				 [U, NewState#state.server]),
 		    LJID = jlib:jid_tolower(jlib:jid_remove_resource(JID)),
 		    Fs1 = [LJID | Fs],
 		    Ts1 = [LJID | Ts],
 		    PrivList =
 			ejabberd_hooks:run_fold(
-			  privacy_get_user_list, StateData#state.server,
+			  privacy_get_user_list, NewState#state.server,
 			  #userlist{},
-			  [U, StateData#state.server]),
+			  [U, NewState#state.server]),
 		    SID = {now(), self()},
-		    Conn = get_conn_type(StateData),
-		    Info = [{ip, StateData#state.ip}, {conn, Conn},
-			    {auth_module, StateData#state.auth_module}],
+		    Conn = get_conn_type(NewState),
+		    Info = [{ip, NewState#state.ip}, {conn, Conn},
+			    {auth_module, NewState#state.auth_module}],
 		    ejabberd_sm:open_session(
-		      SID, U, StateData#state.server, R, Info),
+		      SID, U, NewState#state.server, R, Info),
                     NewStateData =
-                        StateData#state{
+                        NewState#state{
 				     sid = SID,
 				     conn = Conn,
 				     pres_f = ?SETS:from_list(Fs1),
@@ -1095,11 +1095,8 @@ wait_for_session(closed, StateData) ->
     {stop, normal, StateData}.
 
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when Name == <<"enable">>;
-	 Name == <<"a">>;
-	 Name == <<"r">> ->
-    ManageStream = StateData#state.manage_stream,
-    fsm_next_state(session_established, ManageStream(El, StateData));
+    when ?IS_SM_TAG(Name) ->
+    fsm_next_state(session_established, (StateData#state.manage_stream)(El, StateData));
 session_established({xmlstreamelement, El},
 		    StateData) ->
     FromJID = StateData#state.jid,
@@ -1322,13 +1319,13 @@ handle_info({route, _From, _To, {broadcast, Data}},
                                    jlib:jid_remove_resource(StateData#state.jid),
                                    StateData#state.jid,
                                    jlib:iq_to_xml(PrivPushIQ)),
-                    send_element(StateData, PrivPushEl),
+                    NewState = send_stanza(StateData, PrivPushEl),
                     fsm_next_state(StateName,
-                                   StateData#state{privacy_list = NewPL})
+                                   NewState#state{privacy_list = NewPL})
             end;
         {blocking, What} ->
-            route_blocking(What, StateData),
-            fsm_next_state(StateName, StateData);
+            NewState = route_blocking(What, StateData),
+            fsm_next_state(StateName, NewState);
         _ ->
             fsm_next_state(StateName, StateData)
     end;
@@ -1734,7 +1731,7 @@ send_element(StateData, El) when StateData#state.xml_socket ->
 send_element(StateData, El) ->
     send_text(StateData, xml:element_to_binary(El)).
 
-send_stanza(StateData, Stanza) when StateData#state.stream_mgmt_enabled ->
+send_stanza(StateData, Stanza) when StateData#state.sm_xmlns /= undefined ->
     send_stanza_and_ack_req(StateData, Stanza),
     add_to_pending_queue(StateData, Stanza);
 send_stanza(StateData, Stanza) ->
@@ -1921,12 +1918,12 @@ presence_update(From, Packet, StateData) ->
 			    ejabberd_hooks:run(user_available_hook,
 					       NewStateData#state.server,
 					       [NewStateData#state.jid]),
-			    if NewPriority >= 0 ->
-				   resend_offline_messages(NewStateData),
-				   resend_subscription_requests(NewStateData);
-			       true -> ok
-			    end,
-			    presence_broadcast_first(From, NewStateData,
+			    ResentStateData = if NewPriority >= 0 ->
+						     resend_offline_messages(NewStateData),
+						     resend_subscription_requests(NewStateData);
+						 true -> NewStateData
+					      end,
+			    presence_broadcast_first(From, ResentStateData,
 						     Packet);
 			true ->
 			    presence_broadcast_to_trusted(NewStateData, From,
@@ -2240,10 +2237,11 @@ resend_subscription_requests(#state{user = User,
     PendingSubscriptions =
 	ejabberd_hooks:run_fold(resend_subscription_requests_hook,
 				Server, [], [User, Server]),
-    lists:foreach(fun (XMLPacket) ->
-			  send_element(StateData, XMLPacket)
-		  end,
-		  PendingSubscriptions).
+    lists:foldl(fun (XMLPacket, AccStateData) ->
+			send_stanza(AccStateData, XMLPacket)
+		end,
+		StateData,
+		PendingSubscriptions).
 
 get_showtag(undefined) -> <<"unavailable">>;
 get_showtag(Presence) ->
@@ -2419,11 +2417,10 @@ route_blocking(What, StateData) ->
     PrivPushEl =
 	jlib:replace_from_to(jlib:jid_remove_resource(StateData#state.jid),
 			     StateData#state.jid, jlib:iq_to_xml(PrivPushIQ)),
-    send_element(StateData, PrivPushEl),
     %% No need to replace active privacy list here,
     %% blocking pushes are always accompanied by
     %% Privacy List pushes
-    ok.
+    send_stanza(StateData, PrivPushEl).
 
 %%%----------------------------------------------------------------------
 %%% XEP-0198
@@ -2434,104 +2431,108 @@ negotiate_stream_mgmt(_El, StateData) when StateData#state.resource == <<"">> ->
     %% attempt to enable stream management until after it has completed Resource
     %% Binding".  However, it also says: "Stream management errors SHOULD be
     %% considered recoverable", so we don't bail out.
-    send_element(StateData, ?SM_UNEXPECTED_REQUEST),
+    send_element(StateData, ?SM_UNEXPECTED_REQUEST(StateData)),
     StateData;
 negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
-    ?DEBUG("Received an XEP-0198 <~s/> element", [Name]),
     case xml:get_attr_s(<<"xmlns">>, Attrs) of
-      ?NS_STREAM_MGMT ->
+      Xmlns when ?IS_SUPPORTED_SM_XMLNS(Xmlns) ->
 	  case Name of
 	    <<"enable">> ->
-		%% We don't support session restart for now.
-		Response = #xmlel{name = <<"enabled">>,
-				  attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT}],
+		?INFO_MSG("Enabling XEP-0198 stream management for ~s",
+			  [jlib:jid_to_string(StateData#state.jid)]),
+		Res = #xmlel{name = <<"enabled">>,
+				  attrs = [{<<"xmlns">>, Xmlns}],
 				  children = []},
-		send_element(StateData, Response),
-		StateData#state{stream_mgmt_enabled = true,
+		send_element(StateData, Res),
+		StateData#state{sm_xmlns = Xmlns,
+				pending_queue = queue:new(),
 				manage_stream = fun handle_stream_mgmt/2};
 	    _ ->
-		Response = if Name == <<"a">>;
+		Res = if Name == <<"a">>;
 			      Name == <<"r">> ->
-				  ?SM_UNEXPECTED_REQUEST;
+				  ?SM_UNEXPECTED_REQUEST(Xmlns);
 			      true ->
-				  ?SM_BAD_REQUEST
+				  ?SM_BAD_REQUEST(Xmlns)
 			   end,
-		send_element(StateData, Response),
+		send_element(StateData, Res),
 		StateData
 	  end;
       _ ->
-	  send_element(StateData, ?SM_UNSUPPORTED_VERSION),
+	  Res = ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3),
+	  send_element(StateData, Res),
 	  StateData
     end.
 
 handle_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
-    ?DEBUG("Received an XEP-0198 <~s/> element", [Name]),
     case xml:get_attr_s(<<"xmlns">>, Attrs) of
-      ?NS_STREAM_MGMT ->
+      Xmlns when Xmlns == StateData#state.sm_xmlns ->
 	  case Name of
 	    <<"r">> ->
 		H = jlib:integer_to_binary(StateData#state.n_stanzas_in),
-		Response = #xmlel{name = <<"a">>,
-				  attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT},
+		Res = #xmlel{name = <<"a">>,
+				  attrs = [{<<"xmlns">>, Xmlns},
 					   {<<"h">>, H}],
 				  children = []},
-		send_element(StateData, Response),
+		send_element(StateData, Res),
 		StateData;
 	    <<"a">> ->
-		case catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs)) of
+		case catch
+		       jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs))
+		    of
 		  H when is_integer(H), H >= 0 ->
-		      JID = StateData#state.jid,
-		      NumStanzasOut = StateData#state.n_stanzas_out,
-		      if H > NumStanzasOut ->
-			     ?WARNING_MSG("~s ACKed ~B stanzas, but we only sent ~B",
-					  [JID, H, NumStanzasOut]),
-			     StateData;
-			 true ->
-			     ?DEBUG("~s acknowledged ~B of ~B stanzas",
-				    [JID, H, NumStanzasOut]),
-			     Q = queue_drop_while(fun({N, _El}) -> N =< H end,
-						  StateData#state.pending_queue),
-			     StateData#state{pending_queue = Q}
-		      end
+		      ?DEBUG("~s acknowledged ~B of ~B stanzas",
+			     [jlib:jid_to_string(StateData#state.jid),
+			      H, StateData#state.n_stanzas_out]),
+		      Q = queue_drop_while(fun({N, _El}) -> N =< H end,
+					   StateData#state.pending_queue),
+		      StateData#state{pending_queue = Q};
+		  _ ->
+		      ?WARNING_MSG("Ignoring invalid ACK element from ~s",
+		                   [jlib:jid_to_string(StateData#state.jid)]),
+		      StateData
 		end;
 	    _ ->
-		Response = if Name == <<"enable">> ->
-				  ?SM_UNEXPECTED_REQUEST;
+		Res = if Name == <<"enable">> ->
+				  ?SM_UNEXPECTED_REQUEST(Xmlns);
 			      true ->
-				  ?SM_BAD_REQUEST
+				  ?SM_BAD_REQUEST(Xmlns)
 			   end,
-		send_element(StateData, Response),
+		send_element(StateData, Res),
 		StateData
 	  end;
       _ ->
-	  send_element(StateData, ?SM_UNSUPPORTED_VERSION),
+	  Res = ?SM_UNSUPPORTED_VERSION(StateData#state.sm_xmlns),
+	  send_element(StateData, Res),
 	  StateData
     end.
 
-queue_drop_while(F, Q) ->
-    case queue:peek(Q) of
-      {value, Item} ->
-	  case F(Item) of
-	    true ->
-		queue_drop_while(F, queue:drop(Q));
-	    _ ->
-		Q
-	  end;
-      empty ->
-	  Q
-    end.
+update_num_stanzas_in(StateData) when StateData#state.sm_xmlns /= undefined ->
+    NumStanzasIn = StateData#state.n_stanzas_in,
+    NewNum = if NumStanzasIn == 4294967295 ->
+		    0;
+		true ->
+		    NumStanzasIn + 1
+	     end,
+    StateData#state{n_stanzas_in = NewNum};
+update_num_stanzas_in(StateData) ->
+    StateData.
 
-send_stanza_and_ack_req(StateData, Stanza) ->
+send_stanza_and_ack_req(#state{sm_xmlns = Xmlns} = StateData, Stanza) ->
     AckReq = #xmlel{name = <<"r">>,
-		    attrs = [{<<"xmlns">>, ?NS_STREAM_MGMT}],
+		    attrs = [{<<"xmlns">>, Xmlns}],
 		    children = []},
     StanzaS = xml:element_to_binary(Stanza),
     AckReqS = xml:element_to_binary(AckReq),
     send_text(StateData, [StanzaS, AckReqS]).
 
 add_to_pending_queue(StateData, El) ->
+    NumStanzasOut = StateData#state.n_stanzas_out,
     NewState = limit_queue_length(StateData),
-    NewNum = NewState#state.n_stanzas_out + 1,
+    NewNum = if NumStanzasOut == 4294967295 ->
+		    0;
+		true ->
+		    NumStanzasOut + 1
+	     end,
     Q = queue:in({NewNum, El}, NewState#state.pending_queue),
     NewState#state{pending_queue = Q, n_stanzas_out = NewNum}.
 
@@ -2552,23 +2553,40 @@ limit_queue_length(#state{pending_queue = Q, jid = JID} = StateData) ->
 	  end
     end.
 
-update_num_stanzas_in(StateData) when StateData#state.stream_mgmt_enabled ->
-    NewNum = StateData#state.n_stanzas_in + 1,
-    StateData#state{n_stanzas_in = NewNum};
-update_num_stanzas_in(StateData) ->
-    StateData.
-
-resend_unacked_stanzas(StateData) when StateData#state.stream_mgmt_enabled ->
-    lists:foreach(
-      fun({_, #xmlel{attrs = Attrs} = El}) ->
-	      From_s = xml:get_attr_s(<<"from">>, Attrs),
-	      From = jlib:string_to_jid(From_s),
-	      To_s = xml:get_attr_s(<<"to">>, Attrs),
-	      To = jlib:string_to_jid(To_s),
-	      ejabberd_router:route(From, To, El)
-      end, queue:to_list(StateData#state.pending_queue));
+resend_unacked_stanzas(StateData) when StateData#state.sm_xmlns /= undefined ->
+    Q = StateData#state.pending_queue,
+    case queue:len(Q) of
+      0 ->
+	  ok;
+      N ->
+	  ?INFO_MSG("Resending ~B unacknowledged stanzas to ~s",
+		    [N, jlib:jid_to_string(StateData#state.jid)]),
+	  lists:foreach(
+	    fun({Num, #xmlel{attrs = Attrs} = El}) ->
+		    From_s = xml:get_attr_s(<<"from">>, Attrs),
+		    From = jlib:string_to_jid(From_s),
+		    To_s = xml:get_attr_s(<<"to">>, Attrs),
+		    To = jlib:string_to_jid(To_s),
+		    ?DEBUG("Resending unacknowledged stanza #~B from ~s to ~s",
+			   [Num, From_s, To_s]),
+		    ejabberd_router:route(From, To, El)
+	    end, queue:to_list(Q))
+    end;
 resend_unacked_stanzas(_StateData) ->
     ok.
+
+queue_drop_while(F, Q) ->
+    case queue:peek(Q) of
+      {value, Item} ->
+	  case F(Item) of
+	    true ->
+		queue_drop_while(F, queue:drop(Q));
+	    _ ->
+		Q
+	  end;
+      empty ->
+	  Q
+    end.
 
 %%%----------------------------------------------------------------------
 %%% JID Set memory footprint reduction code
