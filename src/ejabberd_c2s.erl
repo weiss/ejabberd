@@ -108,12 +108,12 @@
 		auth_module = unknown,
 		ip,
 		aux_fields = [],
+		sm_xmlns,
+		ack_queue,
+		max_ack_queue,
 		manage_stream = fun negotiate_stream_mgmt/2,
 		n_stanzas_in = 0,
 		n_stanzas_out = 0,
-		ack_queue,
-		max_ack_queue,
-		sm_xmlns,
 		lang}).
 
 %-define(DBGFSM, true).
@@ -164,7 +164,7 @@
 
 %% XEP-0198:
 
--define(IS_SM_TAG(Name),
+-define(IS_STREAM_MGMT_TAG(Name),
 	Name == <<"enable">>;
 	Name == <<"a">>;
 	Name == <<"r">>).
@@ -261,10 +261,6 @@ init([{SockMod, Socket}, Opts]) ->
 	       {value, {_, A}} -> A;
 	       _ -> all
 	     end,
-    MaxAckQueue = case lists:keysearch(max_ack_queue, 1, Opts) of
-		    {value, {_, MAQ}} -> MAQ;
-		    _ -> undefined
-		  end,
     Shaper = case lists:keysearch(shaper, 1, Opts) of
 	       {value, {_, S}} -> S;
 	       _ -> none
@@ -289,6 +285,7 @@ init([{SockMod, Socket}, Opts]) ->
                    true -> TLSOpts1
                end,
     TLSOpts = [verify_none | TLSOpts2],
+    MaxAckQueue = proplists:get_value(max_ack_queue, Opts),
     StreamMgmtEnabled = proplists:get_value(stream_management, Opts, true),
     AckQueue = if not StreamMgmtEnabled ->
 		      none;
@@ -532,7 +529,7 @@ wait_for_stream(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_auth({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_SM_TAG(Name) ->
+    when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_auth, (StateData#state.manage_stream)(El, StateData));
 wait_for_auth({xmlstreamelement, El}, StateData) ->
     case is_auth_packet(El) of
@@ -681,7 +678,7 @@ wait_for_auth(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_feature_request({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_SM_TAG(Name) ->
+    when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_feature_request, (StateData#state.manage_stream)(El, StateData));
 wait_for_feature_request({xmlstreamelement, El},
 			 StateData) ->
@@ -849,7 +846,7 @@ wait_for_feature_request(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_sasl_response({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_SM_TAG(Name) ->
+    when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_sasl_response, (StateData#state.manage_stream)(El, StateData));
 wait_for_sasl_response({xmlstreamelement, El},
 		       StateData) ->
@@ -982,7 +979,7 @@ resource_conflict_action(U, S, R) ->
     end.
 
 wait_for_bind({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_SM_TAG(Name) ->
+    when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_bind, (StateData#state.manage_stream)(El, StateData));
 wait_for_bind({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
@@ -1046,7 +1043,7 @@ wait_for_bind(closed, StateData) ->
     {stop, normal, StateData}.
 
 wait_for_session({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_SM_TAG(Name) ->
+    when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_session, (StateData#state.manage_stream)(El, StateData));
 wait_for_session({xmlstreamelement, El}, StateData) ->
     case jlib:iq_query_info(El) of
@@ -1117,7 +1114,7 @@ wait_for_session(closed, StateData) ->
     {stop, normal, StateData}.
 
 session_established({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
-    when ?IS_SM_TAG(Name) ->
+    when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(session_established, (StateData#state.manage_stream)(El, StateData));
 session_established({xmlstreamelement, El},
 		    StateData) ->
@@ -1760,7 +1757,7 @@ send_element(StateData, El) ->
 
 send_stanza(StateData, Stanza) when StateData#state.sm_xmlns /= undefined ->
     send_stanza_and_ack_req(StateData, Stanza),
-    add_to_ack_queue(StateData, Stanza);
+    ack_queue_add(StateData, Stanza);
 send_stanza(StateData, Stanza) ->
     send_element(StateData, Stanza),
     StateData.
@@ -2505,13 +2502,11 @@ negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 		      StateData
 		end;
 	    false ->
-	      Res = ?SM_SERVICE_UNAVAILABLE(Xmlns),
-	      send_element(StateData, Res),
+	      send_element(StateData, ?SM_SERVICE_UNAVAILABLE(Xmlns)),
 	      StateData
 	  end;
       _ ->
-	  Res = ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3),
-	  send_element(StateData, Res),
+	  send_element(StateData, ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3)),
 	  StateData
     end.
 
@@ -2553,8 +2548,8 @@ handle_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 		StateData
 	  end;
       _ ->
-	  Res = ?SM_UNSUPPORTED_VERSION(StateData#state.sm_xmlns),
-	  send_element(StateData, Res),
+	  send_element(StateData,
+		       ?SM_UNSUPPORTED_VERSION(StateData#state.sm_xmlns)),
 	  StateData
     end.
 
@@ -2577,7 +2572,7 @@ send_stanza_and_ack_req(#state{sm_xmlns = Xmlns} = StateData, Stanza) ->
     AckReqS = xml:element_to_binary(AckReq),
     send_text(StateData, [StanzaS, AckReqS]).
 
-add_to_ack_queue(StateData, El) ->
+ack_queue_add(StateData, El) ->
     NumStanzasOut = StateData#state.n_stanzas_out,
     NewState = limit_queue_length(StateData),
     NewNum = if NumStanzasOut == 4294967295 ->
@@ -2597,7 +2592,7 @@ limit_queue_length(#state{ack_queue = Q, jid = JID} = StateData) ->
 	  Max = if is_integer(MAQ), MAQ > 0 ->
 		       MAQ;
 		   true ->
-		       500
+		       500 %% ejabberd's default value
 		end,
 	  case queue:len(Q) > Max of
 	    true ->
