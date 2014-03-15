@@ -2479,40 +2479,40 @@ negotiate_stream_mgmt(_El, StateData) when StateData#state.resource == <<"">> ->
     send_element(StateData, ?SM_UNEXPECTED_REQUEST(StateData)),
     StateData;
 negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
-    case stream_mgmt_enabled(StateData) of
-      true ->
-	case xml:get_attr_s(<<"xmlns">>, Attrs) of
-	  Xmlns when ?IS_SUPPORTED_SM_XMLNS(Xmlns) ->
-	      case Name of
-		<<"enable">> ->
-		    ?INFO_MSG("Enabling XEP-0198 stream management for ~s",
-			      [jlib:jid_to_string(StateData#state.jid)]),
-		    Res = #xmlel{name = <<"enabled">>,
-				 attrs = [{<<"xmlns">>, Xmlns}],
-				 children = []},
-		    send_element(StateData, Res),
-		    StateData#state{sm_xmlns = Xmlns,
-				    ack_queue = queue:new(),
-				    manage_stream = fun handle_stream_mgmt/2};
-		_ ->
-		    Res = if Name == <<"a">>;
-			     Name == <<"r">> ->
-				 ?SM_UNEXPECTED_REQUEST(Xmlns);
-			     true ->
-				 ?SM_BAD_REQUEST(Xmlns)
-			  end,
-		    send_element(StateData, Res),
-		    StateData
-	      end;
-	  _ ->
-	      Res = ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3),
+    case xml:get_attr_s(<<"xmlns">>, Attrs) of
+      Xmlns when ?IS_SUPPORTED_SM_XMLNS(Xmlns) ->
+	  case stream_mgmt_enabled(StateData) of
+	    true ->
+		case Name of
+		  <<"enable">> ->
+		      ?INFO_MSG("Enabling XEP-0198 stream management for ~s",
+				[jlib:jid_to_string(StateData#state.jid)]),
+		      Res = #xmlel{name = <<"enabled">>,
+				   attrs = [{<<"xmlns">>, Xmlns}],
+				   children = []},
+		      send_element(StateData, Res),
+		      StateData#state{sm_xmlns = Xmlns,
+				      ack_queue = queue:new(),
+				      manage_stream = fun handle_stream_mgmt/2};
+		  _ ->
+		      Res = if Name == <<"a">>;
+			       Name == <<"r">> ->
+				   ?SM_UNEXPECTED_REQUEST(Xmlns);
+			       true ->
+				   ?SM_BAD_REQUEST(Xmlns)
+			    end,
+		      send_element(StateData, Res),
+		      StateData
+		end;
+	    false ->
+	      Res = ?SM_SERVICE_UNAVAILABLE(Xmlns),
 	      send_element(StateData, Res),
 	      StateData
-	end;
-      false ->
-	Res = ?SM_SERVICE_UNAVAILABLE(?NS_STREAM_MGMT_3),
-	send_element(StateData, Res),
-	StateData
+	  end;
+      _ ->
+	  Res = ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3),
+	  send_element(StateData, Res),
+	  StateData
     end.
 
 handle_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
