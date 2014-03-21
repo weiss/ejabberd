@@ -1195,18 +1195,17 @@ session_established2(El, StateData) ->
 						       [User, Server]),
 			   ejabberd_hooks:run(user_send_packet, Server,
 					      [FromJID, ToJID, PresenceEl]),
-			   NewStateData = case ToJID of
-					    #jid{user = User, server = Server,
-						 resource = <<"">>} ->
-						?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
-						       [FromJID, PresenceEl, StateData]),
-						presence_update(FromJID, PresenceEl,
-								StateData);
-					    _ ->
-						presence_track(FromJID, ToJID, PresenceEl,
-							       StateData)
-					  end,
-			   update_num_stanzas_in(NewStateData);
+			   case ToJID of
+			     #jid{user = User, server = Server,
+				  resource = <<"">>} ->
+				 ?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
+					[FromJID, PresenceEl, StateData]),
+				 presence_update(FromJID, PresenceEl,
+						 StateData);
+			     _ ->
+				 presence_track(FromJID, ToJID, PresenceEl,
+						StateData)
+			   end;
 		       <<"iq">> ->
 			   case jlib:iq_query_info(NewEl) of
 			     #iq{xmlns = Xmlns} = IQ
@@ -1219,20 +1218,26 @@ session_established2(El, StateData) ->
 						    [FromJID, ToJID, NewEl]),
 				 check_privacy_route(FromJID, StateData,
 						     FromJID, ToJID, NewEl),
-				 update_num_stanzas_in(StateData)
+				 StateData
 			   end;
 		       <<"message">> ->
 			   ejabberd_hooks:run(user_send_packet, Server,
 					      [FromJID, ToJID, NewEl]),
 			   check_privacy_route(FromJID, StateData, FromJID,
 					       ToJID, NewEl),
-			   update_num_stanzas_in(StateData);
+			   StateData;
 		       _ -> StateData
 		     end
 	       end,
+    NewStateData = case is_stanza(El) of
+		     true ->
+			 update_num_stanzas_in(NewState);
+		     false ->
+			 NewState
+		   end,
     ejabberd_hooks:run(c2s_loop_debug,
 		       [{xmlstreamelement, El}]),
-    fsm_next_state(session_established, NewState).
+    fsm_next_state(session_established, NewStateData).
 
 %%----------------------------------------------------------------------
 %% Func: StateName/3
@@ -1812,6 +1817,19 @@ is_auth_packet(El) ->
 	   get_auth_tags(Els, <<"">>, <<"">>, <<"">>, <<"">>)};
       _ -> false
     end.
+
+is_stanza(#xmlel{name = Name, attrs = Attrs}) when Name == <<"message">>;
+						   Name == <<"presence">>;
+						   Name == <<"iq">> ->
+    case xml:get_attr(<<"xmlns">>, Attrs) of
+      {value, NS} when NS /= <<"jabber:client">>,
+		       NS /= <<"jabber:server">> ->
+	  false;
+      _ ->
+	  true
+    end;
+is_stanza(_El) ->
+    false.
 
 get_auth_tags([#xmlel{name = Name, children = Els} | L],
 	      U, P, D, R) ->
