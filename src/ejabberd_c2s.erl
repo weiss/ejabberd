@@ -113,8 +113,8 @@
 		sm_xmlns,
 		ack_queue,
 		max_ack_queue,
+		resume_timeout,
 		resend_on_timeout,
-		resume_timeout = 0,
 		n_stanzas_in = 0,
 		n_stanzas_out = 0,
 		lang}).
@@ -292,16 +292,16 @@ init([{SockMod, Socket}, Opts]) ->
                    true -> TLSOpts1
                end,
     TLSOpts = [verify_none | TLSOpts2],
+    StreamMgmtEnabled = proplists:get_value(stream_management, Opts, true),
+    StreamMgmtState = if StreamMgmtEnabled -> inactive;
+			 true -> disabled
+		      end,
     MaxAckQueue = proplists:get_value(max_ack_queue, Opts),
     ResumeTimeout = case proplists:get_value(resume_timeout, Opts) of
 		      Timeout when is_integer(Timeout), Timeout >= 0 -> Timeout;
 		      _ -> 300
 		    end,
     ResendOnTimeout = proplists:get_bool(resend_on_timeout, Opts),
-    StreamMgmtEnabled = proplists:get_value(stream_management, Opts, true),
-    StreamMgmtState = if StreamMgmtEnabled -> inactive;
-			 true -> disabled
-		      end,
     IP = peerip(SockMod, Socket),
     %% Check if IP is blacklisted:
     case is_ip_blacklisted(IP) of
@@ -1170,7 +1170,9 @@ session_established({xmlstreamerror, _}, StateData) ->
     send_trailer(StateData),
     {stop, normal, StateData};
 session_established(closed, StateData)
-    when StateData#state.resume_timeout > 0 ->
+    when StateData#state.resume_timeout > 0,
+	 StateData#state.sm_state == active orelse
+	 StateData#state.sm_state == waiting ->
     fsm_next_state(wait_for_resume, StateData#state{sm_state = waiting});
 session_established(closed, StateData) ->
     {stop, normal, StateData}.
@@ -1650,7 +1652,9 @@ handle_info({route, From, To,
 handle_info({'DOWN', Monitor, _Type, _Object, _Info},
 	    _StateName, StateData)
     when Monitor == StateData#state.socket_monitor ->
-    if StateData#state.resume_timeout > 0 ->
+    if StateData#state.resume_timeout > 0,
+       StateData#state.sm_state == active orelse
+       StateData#state.sm_state == waiting ->
 	   fsm_next_state(wait_for_resume, StateData#state{sm_state = waiting});
        true ->
 	   {stop, normal, StateData}
