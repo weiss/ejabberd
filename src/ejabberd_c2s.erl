@@ -296,7 +296,10 @@ init([{SockMod, Socket}, Opts]) ->
     StreamMgmtState = if StreamMgmtEnabled -> inactive;
 			 true -> disabled
 		      end,
-    MaxAckQueue = proplists:get_value(max_ack_queue, Opts),
+    MaxAckQueue = case proplists:get_value(max_ack_queue, Opts) of
+		    Limit when is_integer(Limit), Limit > 0 -> Limit;
+		    _ -> 500
+		  end,
     ResumeTimeout = case proplists:get_value(resume_timeout, Opts) of
 		      Timeout when is_integer(Timeout), Timeout >= 0 -> Timeout;
 		      _ -> 300
@@ -1207,8 +1210,13 @@ session_established2(El, StateData) ->
 		       _ ->
 			   Err = jlib:make_error_reply(NewEl,
 						       ?ERR_JID_MALFORMED),
-			   send_element(StateData, Err),
-			   StateData
+			   case is_stanza(Err) of
+			     true ->
+				 send_stanza(StateData, Err);
+			     false ->
+				 send_element(StateData, Err),
+				 StateData
+			   end
 		     end;
 		 _ ->
 		     case Name of
@@ -1724,7 +1732,7 @@ print_state(State = #state{pres_t = T, pres_f = F, pres_a = A, pres_i = I}) ->
 terminate(_Reason, StateName, StateData) ->
     case StateData#state.sm_state of
       resumed ->
-	  ?INFO_MSG("Resumed session for ~s",
+	  ?INFO_MSG("Closing former stream of resumed session for ~s",
 		    [jlib:jid_to_string(StateData#state.jid)]);
       _ ->
 	  if StateName == session_established;
@@ -2688,25 +2696,20 @@ ack_queue_drop(StateData, NumHandled) ->
 			 StateData#state.ack_queue),
     StateData#state{ack_queue = Q}.
 
-limit_queue_length(#state{ack_queue = Q, jid = JID} = StateData) ->
-    case StateData#state.max_ack_queue of
-      Val when Val == infinity;
-	       Val == unlimited ->
-	  StateData;
-      MAQ ->
-	  Max = if is_integer(MAQ), MAQ > 0 ->
-		       MAQ;
-		   true ->
-		       500 %% ejabberd's default value
-		end,
-	  case queue:len(Q) > Max of
-	    true ->
-		?WARNING_MSG("Dropping stanza from too long ACK queue for ~s",
-			     [jlib:jid_to_string(JID)]),
-		StateData#state{ack_queue = queue:drop(Q)};
-	    _ ->
-		StateData
-	  end
+limit_queue_length(#state{max_ack_queue = Limit} = StateData)
+    when Limit == infinity;
+	 Limit == unlimited ->
+    StateData;
+limit_queue_length(#state{jid = JID,
+			  ack_queue = Q,
+			  max_ack_queue = Limit} = StateData) ->
+    case queue:len(Q) >= Limit of
+      true ->
+	  ?WARNING_MSG("Dropping stanza from too long ACK queue for ~s",
+		       [jlib:jid_to_string(JID)]),
+	  limit_queue_length(StateData#state{ack_queue = queue:drop(Q)});
+      false ->
+	  StateData
     end.
 
 handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
@@ -2716,7 +2719,7 @@ handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
       0 ->
 	  ok;
       N ->
-	  ?WARNING_MSG("~B stanzas were not acknowledged by ~s",
+	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
 		    [N, jlib:jid_to_string(StateData#state.jid)]),
 	  lists:foreach(
 	    fun({_, #xmlel{attrs = Attrs} = El}) ->
@@ -2787,6 +2790,8 @@ handle_resume(StateData, #xmlel{attrs = Attrs}) ->
 		       #xmlel{name = <<"r">>,
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
 			      children = []}),
+	  ?INFO_MSG("Resumed session for ~s",
+		    [jlib:jid_to_string(StateData#state.jid)]);
 	  {ok, NewState};
       {error, El} ->
 	  send_element(StateData, El),
