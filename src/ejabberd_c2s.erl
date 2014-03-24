@@ -2544,7 +2544,7 @@ stream_mgmt_enabled(_StateData) ->
     true.
 
 dispatch_stream_mgmt(El, StateData) when StateData#state.sm_state == active ->
-    do_stream_mgmt(El, StateData);
+    perform_stream_mgmt(El, StateData);
 dispatch_stream_mgmt(El, StateData) ->
     negotiate_stream_mgmt(El, StateData).
 
@@ -2619,7 +2619,7 @@ negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 	  StateData
     end.
 
-do_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
+perform_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
     case xml:get_attr_s(<<"xmlns">>, Attrs) of
       Xmlns when Xmlns == StateData#state.sm_xmlns ->
 	  case Name of
@@ -2791,7 +2791,7 @@ handle_resume(StateData, #xmlel{attrs = Attrs}) ->
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
 			      children = []}),
 	  ?INFO_MSG("Resumed session for ~s",
-		    [jlib:jid_to_string(StateData#state.jid)]);
+		    [jlib:jid_to_string(NewState#state.jid)]),
 	  {ok, NewState};
       {error, El} ->
 	  send_element(StateData, El),
