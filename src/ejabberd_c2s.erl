@@ -1074,19 +1074,20 @@ wait_for_session({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
     fsm_next_state(wait_for_session, dispatch_stream_mgmt(El, StateData));
 wait_for_session({xmlstreamelement, El}, StateData) ->
+    NewStateData = update_num_stanzas_in(StateData, El),
     case jlib:iq_query_info(El) of
 	#iq{type = set, xmlns = ?NS_SESSION} ->
-	    U = StateData#state.user,
-	    R = StateData#state.resource,
-	    JID = StateData#state.jid,
-	    case acl:match_rule(StateData#state.server,
-				StateData#state.access, JID) of
+	    U = NewStateData#state.user,
+	    R = NewStateData#state.resource,
+	    JID = NewStateData#state.jid,
+	    case acl:match_rule(NewStateData#state.server,
+				NewStateData#state.access, JID) of
 		allow ->
 		    ?INFO_MSG("(~w) Opened session for ~s",
-			      [StateData#state.socket,
+			      [NewStateData#state.socket,
 			       jlib:jid_to_string(JID)]),
                     Res = jlib:make_result_iq_reply(El#xmlel{children = []}),
-		    NewState = send_stanza(StateData, Res),
+		    NewState = send_stanza(NewStateData, Res),
 		    change_shaper(NewState, JID),
 		    {Fs, Ts} = ejabberd_hooks:run_fold(
 				 roster_get_subscription_lists,
@@ -1106,26 +1107,26 @@ wait_for_session({xmlstreamelement, El}, StateData) ->
 			    {auth_module, NewState#state.auth_module}],
 		    ejabberd_sm:open_session(
 		      NewState#state.sid, U, NewState#state.server, R, Info),
-                    NewStateData =
+                    UpdatedStateData =
                         NewState#state{
 				     conn = Conn,
 				     pres_f = ?SETS:from_list(Fs1),
 				     pres_t = ?SETS:from_list(Ts1),
 				     privacy_list = PrivList},
 		    fsm_next_state_pack(session_established,
-                                        NewStateData);
+                                        UpdatedStateData);
 		_ ->
 		    ejabberd_hooks:run(forbidden_session_hook,
-				       StateData#state.server, [JID]),
+				       NewStateData#state.server, [JID]),
 		    ?INFO_MSG("(~w) Forbidden session for ~s",
-			      [StateData#state.socket,
+			      [NewStateData#state.socket,
 			       jlib:jid_to_string(JID)]),
 		    Err = jlib:make_error_reply(El, ?ERR_NOT_ALLOWED),
-		    send_element(StateData, Err),
-		    fsm_next_state(wait_for_session, StateData)
+		    send_element(NewStateData, Err),
+		    fsm_next_state(wait_for_session, NewStateData)
 	    end;
 	_ ->
-	    fsm_next_state(wait_for_session, StateData)
+	    fsm_next_state(wait_for_session, NewStateData)
     end;
 
 wait_for_session(timeout, StateData) ->
@@ -1185,9 +1186,10 @@ session_established(closed, StateData) ->
 %% connection)
 session_established2(El, StateData) ->
     #xmlel{name = Name, attrs = Attrs} = El,
-    User = StateData#state.user,
-    Server = StateData#state.server,
-    FromJID = StateData#state.jid,
+    NewStateData = update_num_stanzas_in(StateData, El),
+    User = NewStateData#state.user,
+    Server = NewStateData#state.server,
+    FromJID = NewStateData#state.jid,
     To = xml:get_attr_s(<<"to">>, Attrs),
     ToJID = case To of
 	      <<"">> -> jlib:make_jid(User, Server, <<"">>);
@@ -1196,7 +1198,7 @@ session_established2(El, StateData) ->
     NewEl1 = jlib:remove_attr(<<"xmlns">>, El),
     NewEl = case xml:get_attr_s(<<"xml:lang">>, Attrs) of
 	      <<"">> ->
-		  case StateData#state.lang of
+		  case NewStateData#state.lang of
 		    <<"">> -> NewEl1;
 		    Lang ->
 			xml:replace_tag_attr(<<"xml:lang">>, Lang, NewEl1)
@@ -1206,17 +1208,17 @@ session_established2(El, StateData) ->
     NewState = case ToJID of
 		 error ->
 		     case xml:get_attr_s(<<"type">>, Attrs) of
-		       <<"error">> -> StateData;
-		       <<"result">> -> StateData;
+		       <<"error">> -> NewStateData;
+		       <<"result">> -> NewStateData;
 		       _ ->
 			   Err = jlib:make_error_reply(NewEl,
 						       ?ERR_JID_MALFORMED),
 			   case is_stanza(Err) of
 			     true ->
-				 send_stanza(StateData, Err);
+				 send_stanza(NewStateData, Err);
 			     false ->
-				 send_element(StateData, Err),
-				 StateData
+				 send_element(NewStateData, Err),
+				 NewStateData
 			   end
 		     end;
 		 _ ->
@@ -1232,12 +1234,12 @@ session_established2(El, StateData) ->
 			     #jid{user = User, server = Server,
 				  resource = <<"">>} ->
 				 ?DEBUG("presence_update(~p,~n\t~p,~n\t~p)",
-					[FromJID, PresenceEl, StateData]),
+					[FromJID, PresenceEl, NewStateData]),
 				 presence_update(FromJID, PresenceEl,
-						 StateData);
+						 NewStateData);
 			     _ ->
 				 presence_track(FromJID, ToJID, PresenceEl,
-						StateData)
+						NewStateData)
 			   end;
 		       <<"iq">> ->
 			   case jlib:iq_query_info(NewEl) of
@@ -1245,32 +1247,26 @@ session_established2(El, StateData) ->
 				 when Xmlns == (?NS_PRIVACY);
 				      Xmlns == (?NS_BLOCKING) ->
 				 process_privacy_iq(FromJID, ToJID, IQ,
-						    StateData);
+						    NewStateData);
 			     _ ->
 				 ejabberd_hooks:run(user_send_packet, Server,
 						    [FromJID, ToJID, NewEl]),
-				 check_privacy_route(FromJID, StateData,
+				 check_privacy_route(FromJID, NewStateData,
 						     FromJID, ToJID, NewEl),
-				 StateData
+				 NewStateData
 			   end;
 		       <<"message">> ->
 			   ejabberd_hooks:run(user_send_packet, Server,
 					      [FromJID, ToJID, NewEl]),
-			   check_privacy_route(FromJID, StateData, FromJID,
+			   check_privacy_route(FromJID, NewStateData, FromJID,
 					       ToJID, NewEl),
-			   StateData;
-		       _ -> StateData
+			   NewStateData;
+		       _ -> NewStateData
 		     end
 	       end,
-    NewStateData = case is_stanza(El) of
-		     true ->
-			 update_num_stanzas_in(NewState);
-		     false ->
-			 NewState
-		   end,
     ejabberd_hooks:run(c2s_loop_debug,
 		       [{xmlstreamelement, El}]),
-    fsm_next_state(session_established, NewStateData).
+    fsm_next_state(session_established, NewState).
 
 wait_for_resume(timeout, StateData) ->
     ?DEBUG("Timed out waiting for resumption of stream for ~s",
@@ -2720,15 +2716,17 @@ handle_resume(StateData, Attrs) ->
 	  error
     end.
 
-update_num_stanzas_in(StateData) when StateData#state.sm_state == active ->
-    NewNum = case StateData#state.n_stanzas_in of
-	       4294967295 ->
+update_num_stanzas_in(StateData, El) when StateData#state.sm_state == active ->
+    NewNum = case {is_stanza(El), StateData#state.n_stanzas_in} of
+	       {true, 4294967295} ->
 		   0;
-	       Num ->
-		   Num + 1
+	       {true, Num} ->
+		   Num + 1;
+	       {false, Num} ->
+		   Num
 	     end,
     StateData#state{n_stanzas_in = NewNum};
-update_num_stanzas_in(StateData) ->
+update_num_stanzas_in(StateData, _El) ->
     StateData.
 
 send_stanza_and_ack_req(StateData, Stanza) ->
