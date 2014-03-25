@@ -995,11 +995,12 @@ resource_conflict_action(U, S, R) ->
 	  {accept_resource, Rnew}
     end.
 
-wait_for_bind({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
+wait_for_bind({xmlstreamelement, #xmlel{name = Name, attrs = Attrs} = El},
+	      StateData)
     when ?IS_STREAM_MGMT_TAG(Name) ->
     case Name of
       <<"resume">> ->
-	  case handle_resume(StateData, El) of
+	  case handle_resume(StateData, Attrs) of
 	    {ok, ResumedState} ->
 		fsm_next_state(session_established, ResumedState);
 	    error ->
@@ -2563,42 +2564,7 @@ negotiate_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 	    true ->
 		case Name of
 		  <<"enable">> ->
-		      ?INFO_MSG("Enabling XEP-0198 stream management for ~s",
-				[jlib:jid_to_string(StateData#state.jid)]),
-		      ConfigTimeout = StateData#state.resume_timeout,
-		      Timeout = case xml:get_attr_s(<<"resume">>, Attrs) of
-				  ResumeAttr when ResumeAttr == <<"true">>;
-						  ResumeAttr == <<"1">> ->
-				      MaxAttr = xml:get_attr_s(<<"max">>, Attrs),
-				      case catch
-					     jlib:binary_to_integer(MaxAttr)
-					  of
-					Max when is_integer(Max),
-						 Max >= 0,
-						 Max =< ConfigTimeout ->
-					    Max;
-					_ ->
-					    ConfigTimeout
-				      end;
-				  _ ->
-				      0
-				end,
-		      ResAttrs = [{<<"xmlns">>, Xmlns}] ++
-			  if Timeout > 0 ->
-				 [{<<"id">>, make_resume_id(StateData)},
-				  {<<"resume">>, <<"true">>},
-				  {<<"max">>, jlib:integer_to_binary(Timeout)}];
-			     true ->
-				 []
-			  end,
-		      Res = #xmlel{name = <<"enabled">>,
-				   attrs = ResAttrs,
-				   children = []},
-		      send_element(StateData, Res),
-		      StateData#state{sm_state = active,
-				      sm_xmlns = Xmlns,
-				      ack_queue = queue:new(),
-				      resume_timeout = Timeout * 1000};
+		      handle_enable(StateData#state{sm_xmlns = Xmlns}, Attrs);
 		  _ ->
 		      Res = if Name == <<"a">>;
 			       Name == <<"r">>;
@@ -2624,27 +2590,9 @@ perform_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
       Xmlns when Xmlns == StateData#state.sm_xmlns ->
 	  case Name of
 	    <<"r">> ->
-		H = jlib:integer_to_binary(StateData#state.n_stanzas_in),
-		Res = #xmlel{name = <<"a">>,
-			     attrs = [{<<"xmlns">>, Xmlns},
-				      {<<"h">>, H}],
-			     children = []},
-		send_element(StateData, Res),
-		StateData;
+		handle_r(StateData);
 	    <<"a">> ->
-		case catch
-		       jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs))
-		    of
-		  H when is_integer(H), H >= 0 ->
-		      ?DEBUG("~s acknowledged ~B of ~B stanzas",
-			     [jlib:jid_to_string(StateData#state.jid),
-			      H, StateData#state.n_stanzas_out]),
-		      ack_queue_drop(StateData, H);
-		  _ ->
-		      ?WARNING_MSG("Ignoring invalid ACK element from ~s",
-		                   [jlib:jid_to_string(StateData#state.jid)]),
-		      StateData
-		end;
+		handle_a(StateData, Attrs);
 	    _ ->
 		Res = if Name == <<"enable">>;
 			 Name == <<"resume">> ->
@@ -2661,94 +2609,66 @@ perform_stream_mgmt(#xmlel{name = Name, attrs = Attrs}, StateData) ->
 	  StateData
     end.
 
-update_num_stanzas_in(StateData) when StateData#state.sm_state == active ->
-    NumStanzasIn = StateData#state.n_stanzas_in,
-    NewNum = if NumStanzasIn == 4294967295 ->
-		    0;
-		true ->
-		    NumStanzasIn + 1
-	     end,
-    StateData#state{n_stanzas_in = NewNum};
-update_num_stanzas_in(StateData) ->
+handle_enable(#state{resume_timeout = ConfigTimeout} = StateData, Attrs) ->
+    Timeout = case xml:get_attr_s(<<"resume">>, Attrs) of
+		ResumeAttr when ResumeAttr == <<"true">>;
+				ResumeAttr == <<"1">> ->
+		    MaxAttr = xml:get_attr_s(<<"max">>, Attrs),
+		    case catch jlib:binary_to_integer(MaxAttr) of
+		      Max when is_integer(Max), Max > 0, Max =< ConfigTimeout ->
+			  Max;
+		      _ ->
+			  ConfigTimeout
+		    end;
+		_ ->
+		    0
+	      end,
+    ResAttrs = [{<<"xmlns">>, StateData#state.sm_xmlns}] ++
+	if Timeout > 0 ->
+	       ?INFO_MSG("Stream management with resumption enabled for ~s",
+			 [jlib:jid_to_string(StateData#state.jid)]),
+	       [{<<"id">>, make_resume_id(StateData)},
+		{<<"resume">>, <<"true">>},
+		{<<"max">>, jlib:integer_to_binary(Timeout)}];
+	   true ->
+	       ?INFO_MSG("Stream management without resumption enabled for ~s",
+			 [jlib:jid_to_string(StateData#state.jid)]),
+	       []
+	end,
+    Res = #xmlel{name = <<"enabled">>,
+		 attrs = ResAttrs,
+		 children = []},
+    send_element(StateData, Res),
+    StateData#state{sm_state = active,
+		    ack_queue = queue:new(),
+		    resume_timeout = Timeout * 1000}.
+
+handle_r(StateData) ->
+    H = jlib:integer_to_binary(StateData#state.n_stanzas_in),
+    Res = #xmlel{name = <<"a">>,
+		 attrs = [{<<"xmlns">>, StateData#state.sm_xmlns},
+			  {<<"h">>, H}],
+		 children = []},
+    send_element(StateData, Res),
     StateData.
 
-send_stanza_and_ack_req(#state{sm_xmlns = Xmlns} = StateData, Stanza) ->
-    AckReq = #xmlel{name = <<"r">>,
-		    attrs = [{<<"xmlns">>, Xmlns}],
-		    children = []},
-    StanzaS = xml:element_to_binary(Stanza),
-    AckReqS = xml:element_to_binary(AckReq),
-    send_text(StateData, [StanzaS, AckReqS]).
-
-ack_queue_add(StateData, El) ->
-    NumStanzasOut = StateData#state.n_stanzas_out,
-    NewState = limit_queue_length(StateData),
-    NewNum = if NumStanzasOut == 4294967295 ->
-		    0;
-		true ->
-		    NumStanzasOut + 1
-	     end,
-    Q = queue:in({NewNum, El}, NewState#state.ack_queue),
-    NewState#state{ack_queue = Q, n_stanzas_out = NewNum}.
-
-ack_queue_drop(StateData, NumHandled) ->
-    Q = queue_drop_while(fun({N, _Stanza}) -> N =< NumHandled end,
-			 StateData#state.ack_queue),
-    StateData#state{ack_queue = Q}.
-
-limit_queue_length(#state{max_ack_queue = Limit} = StateData)
-    when Limit == infinity;
-	 Limit == unlimited ->
-    StateData;
-limit_queue_length(#state{jid = JID,
-			  ack_queue = Q,
-			  max_ack_queue = Limit} = StateData) ->
-    case queue:len(Q) >= Limit of
-      true ->
-	  ?WARNING_MSG("Dropping stanza from too long ACK queue for ~s",
+handle_a(#state{jid = JID, n_stanzas_out = NumStanzasOut} = StateData, Attrs) ->
+    case catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs)) of
+      H when is_integer(H), H > NumStanzasOut ->
+	  ?WARNING_MSG("~s acknowledged ~B stanzas, but only ~B were sent",
+		       [jlib:jid_to_string(JID), H, NumStanzasOut]),
+	  ack_queue_drop(StateData, NumStanzasOut);
+      H when is_integer(H), H >= 0 ->
+	  ?DEBUG("~s acknowledged ~B of ~B stanzas",
+		 [jlib:jid_to_string(JID), H, NumStanzasOut]),
+	  ack_queue_drop(StateData, H);
+      _ ->
+	  ?WARNING_MSG("Ignoring invalid ACK element from ~s",
 		       [jlib:jid_to_string(JID)]),
-	  limit_queue_length(StateData#state{ack_queue = queue:drop(Q)});
-      false ->
 	  StateData
     end.
 
-handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
-					  StateData#state.sm_state == waiting ->
-    Q = StateData#state.ack_queue,
-    case queue:len(Q) of
-      0 ->
-	  ok;
-      N ->
-	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
-		    [N, jlib:jid_to_string(StateData#state.jid)]),
-	  lists:foreach(
-	    fun({_, #xmlel{attrs = Attrs} = El}) ->
-		    From_s = xml:get_attr_s(<<"from">>, Attrs),
-		    From = jlib:string_to_jid(From_s),
-		    To_s = xml:get_attr_s(<<"to">>, Attrs),
-		    To = jlib:string_to_jid(To_s),
-		    F(From, To, El)
-	    end, queue:to_list(Q))
-    end;
-handle_unacked_stanzas(_StateData, _F) ->
-    ok.
-
-handle_unacked_stanzas(StateData) when StateData#state.sm_state == active;
-				       StateData#state.sm_state == waiting ->
-    F = case StateData#state.resend_on_timeout of
-	  true ->
-	      fun ejabberd_router:route/3;
-	  false ->
-	      fun(From, To, El) ->
-		      Err = jlib:make_error_reply(El, ?ERR_SERVICE_UNAVAILABLE),
-		      ejabberd_router:route(To, From, Err)
-	      end
-	end,
-    handle_unacked_stanzas(StateData, F);
-handle_unacked_stanzas(_StateData) ->
-    ok.
-
-handle_resume(StateData, #xmlel{attrs = Attrs}) ->
+handle_resume(StateData, Attrs) ->
     R = case xml:get_attr_s(<<"xmlns">>, Attrs) of
 	  Xmlns when ?IS_SUPPORTED_SM_XMLNS(Xmlns) ->
 	      case stream_mgmt_enabled(StateData) of
@@ -2800,9 +2720,96 @@ handle_resume(StateData, #xmlel{attrs = Attrs}) ->
 	  error
     end.
 
+update_num_stanzas_in(StateData) when StateData#state.sm_state == active ->
+    NewNum = case StateData#state.n_stanzas_in of
+	       4294967295 ->
+		   0;
+	       Num ->
+		   Num + 1
+	     end,
+    StateData#state{n_stanzas_in = NewNum};
+update_num_stanzas_in(StateData) ->
+    StateData.
+
+send_stanza_and_ack_req(StateData, Stanza) ->
+    AckReq = #xmlel{name = <<"r">>,
+		    attrs = [{<<"xmlns">>, StateData#state.sm_xmlns}],
+		    children = []},
+    StanzaS = xml:element_to_binary(Stanza),
+    AckReqS = xml:element_to_binary(AckReq),
+    send_text(StateData, [StanzaS, AckReqS]).
+
+ack_queue_add(StateData, El) ->
+    NewNum = case StateData#state.n_stanzas_out of
+	       4294967295 ->
+		   0;
+	       Num ->
+		   Num + 1
+	     end,
+    NewState = limit_queue_length(StateData),
+    NewQueue = queue:in({NewNum, El}, NewState#state.ack_queue),
+    NewState#state{ack_queue = NewQueue, n_stanzas_out = NewNum}.
+
+ack_queue_drop(StateData, NumHandled) ->
+    NewQueue = jlib:queue_drop_while(fun({N, _Stanza}) -> N =< NumHandled end,
+				     StateData#state.ack_queue),
+    StateData#state{ack_queue = NewQueue}.
+
+limit_queue_length(#state{max_ack_queue = Limit} = StateData)
+    when Limit == infinity;
+	 Limit == unlimited ->
+    StateData;
+limit_queue_length(#state{jid = JID,
+			  ack_queue = Queue,
+			  max_ack_queue = Limit} = StateData) ->
+    case queue:len(Queue) >= Limit of
+      true ->
+	  ?WARNING_MSG("Dropping stanza from too long ACK queue for ~s",
+		       [jlib:jid_to_string(JID)]),
+	  limit_queue_length(StateData#state{ack_queue = queue:drop(Queue)});
+      false ->
+	  StateData
+    end.
+
+handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
+					  StateData#state.sm_state == waiting ->
+    Queue = StateData#state.ack_queue,
+    case queue:len(Queue) of
+      0 ->
+	  ok;
+      N ->
+	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
+		    [N, jlib:jid_to_string(StateData#state.jid)]),
+	  lists:foreach(
+	    fun({_, #xmlel{attrs = Attrs} = El}) ->
+		    From_s = xml:get_attr_s(<<"from">>, Attrs),
+		    From = jlib:string_to_jid(From_s),
+		    To_s = xml:get_attr_s(<<"to">>, Attrs),
+		    To = jlib:string_to_jid(To_s),
+		    F(From, To, El)
+	    end, queue:to_list(Queue))
+    end;
+handle_unacked_stanzas(_StateData, _F) ->
+    ok.
+
+handle_unacked_stanzas(StateData) when StateData#state.sm_state == active;
+				       StateData#state.sm_state == waiting ->
+    F = case StateData#state.resend_on_timeout of
+	  true ->
+	      fun ejabberd_router:route/3;
+	  false ->
+	      fun(From, To, El) ->
+		      Err = jlib:make_error_reply(El, ?ERR_SERVICE_UNAVAILABLE),
+		      ejabberd_router:route(To, From, Err)
+	      end
+	end,
+    handle_unacked_stanzas(StateData, F);
+handle_unacked_stanzas(_StateData) ->
+    ok.
+
 inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
-    case base64_to_term(ResumeID) of
-      {U, S, R, Time} ->
+    case jlib:base64_to_term(ResumeID) of
+      {term, {U, S, R, Time}} ->
 	  case ejabberd_sm:get_session_pid(U, S, R) of
 	    none ->
 		{error, <<"Previous session PID not found">>};
@@ -2845,7 +2852,7 @@ inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
 		      {error, <<"Cannot grab session state">>}
 		end
 	  end;
-      _ ->
+      error ->
 	  {error, <<"Invalid 'previd' value">>}
     end.
 
@@ -2858,33 +2865,7 @@ make_resume_id(StateData) ->
 	  StateData#state.server,
 	  StateData#state.resource,
 	  Time},
-    base64:encode(term_to_binary(ID)).
-
-base64_to_term(Base64) ->
-    case catch base64:decode(Base64) of
-      {'EXIT', _} ->
-	  error;
-      Binary ->
-	  case catch binary_to_term(Binary, [safe]) of
-	    {'EXIT', _} ->
-		error;
-	    Term ->
-		Term
-	  end
-    end.
-
-queue_drop_while(F, Q) ->
-    case queue:peek(Q) of
-      {value, Item} ->
-	  case F(Item) of
-	    true ->
-		queue_drop_while(F, queue:drop(Q));
-	    _ ->
-		Q
-	  end;
-      empty ->
-	  Q
-    end.
+    jlib:term_to_base64(ID).
 
 %%%----------------------------------------------------------------------
 %%% JID Set memory footprint reduction code
