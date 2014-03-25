@@ -1002,7 +1002,7 @@ wait_for_bind({xmlstreamelement, #xmlel{name = Name} = El}, StateData)
 	  case handle_resume(StateData, El) of
 	    {ok, ResumedState} ->
 		fsm_next_state(session_established, ResumedState);
-	    _ ->
+	    error ->
 		fsm_next_state(wait_for_bind, StateData)
 	  end;
       _ ->
@@ -2757,20 +2757,20 @@ handle_resume(StateData, #xmlel{attrs = Attrs}) ->
 			  catch jlib:binary_to_integer(xml:get_attr_s(<<"h">>, Attrs))}
 			of
 		      {{value, PrevID}, H} when is_integer(H) ->
-			  case inherit_process_state(StateData, PrevID) of
+			  case inherit_session_state(StateData, PrevID) of
 			    {ok, InheritedState} ->
 				{ok, InheritedState, H};
-			    error ->
-				{error, ?SM_ITEM_NOT_FOUND(Xmlns)}
+			    {error, Err} ->
+				{error, ?SM_ITEM_NOT_FOUND(Xmlns), Err}
 			  end;
 		      _ ->
-			  {error, ?SM_BAD_REQUEST(Xmlns)}
+			  {error, ?SM_BAD_REQUEST(Xmlns), <<"Invalid request">>}
 		    end;
 		false ->
-		    {error, ?SM_SERVICE_UNAVAILABLE(Xmlns)}
+		    {error, ?SM_SERVICE_UNAVAILABLE(Xmlns), <<"XEP-0198 disabled">>}
 	      end;
 	  _ ->
-	      {error, ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3)}
+	      {error, ?SM_UNSUPPORTED_VERSION(?NS_STREAM_MGMT_3), <<"Invalid XMLNS">>}
 	end,
     case R of
       {ok, ResumedState, NumHandled} ->
@@ -2793,18 +2793,19 @@ handle_resume(StateData, #xmlel{attrs = Attrs}) ->
 	  ?INFO_MSG("Resumed session for ~s",
 		    [jlib:jid_to_string(NewState#state.jid)]),
 	  {ok, NewState};
-      {error, El} ->
+      {error, El, Msg} ->
 	  send_element(StateData, El),
+	  ?WARNING_MSG("Cannot resume session for ~s@~s: ~s",
+		       [StateData#state.user, StateData#state.server, Msg]),
 	  error
     end.
 
-inherit_process_state(#state{user = User, server = Server} = StateData,
-		      ResumeID) ->
+inherit_session_state(#state{user = U, server = S} = StateData, ResumeID) ->
     case base64_to_term(ResumeID) of
-      {U = User, S = Server, R, Time} ->
+      {U, S, R, Time} ->
 	  case ejabberd_sm:get_session_pid(U, S, R) of
 	    none ->
-		error;
+		{error, <<"Previous session PID not found">>};
 	    OldPID ->
 		OldSID = {Time, OldPID},
 		case catch resume_session(OldPID) of
@@ -2841,11 +2842,11 @@ inherit_process_state(#state{user = User, server = Server} = StateData,
 					   n_stanzas_out = OldStateData#state.n_stanzas_out,
 					   sm_state = active}};
 		  _ ->
-		      error
+		      {error, <<"Cannot grab session state">>}
 		end
 	  end;
       _ ->
-	  error
+	  {error, <<"Invalid 'previd' value">>}
     end.
 
 resume_session(FsmRef) ->
