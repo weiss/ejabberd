@@ -784,21 +784,16 @@ check_list(List) ->
 -spec term_to_base64(term()) -> binary().
 
 term_to_base64(Term) ->
-    base64:encode(term_to_binary(Term)).
+    encode_base64(term_to_binary(Term)).
 
 -spec base64_to_term(binary()) -> {term, term()} | error.
 
 base64_to_term(Base64) ->
-    case catch base64:decode(Base64) of
+    case catch binary_to_term(decode_base64(Base64), [safe]) of
       {'EXIT', _} ->
 	  error;
-      Binary ->
-	  case catch binary_to_term(Binary, [safe]) of
-	    {'EXIT', _} ->
-		error;
-	    Term ->
-		{term, Term}
-	  end
+      Term ->
+	  {term, Term}
     end.
 
 -spec decode_base64(binary()) -> binary().
