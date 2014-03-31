@@ -2540,12 +2540,12 @@ stream_mgmt_enabled(#state{sm_state = disabled}) ->
 stream_mgmt_enabled(_StateData) ->
     true.
 
-dispatch_stream_mgmt(El, StateData) when StateData#state.sm_state == active ->
+dispatch_stream_mgmt(El, #state{sm_state = active} = StateData) ->
     perform_stream_mgmt(El, StateData);
 dispatch_stream_mgmt(El, StateData) ->
     negotiate_stream_mgmt(El, StateData).
 
-negotiate_stream_mgmt(_El, StateData) when StateData#state.resource == <<"">> ->
+negotiate_stream_mgmt(_El, #state{resource = <<"">>} = StateData) ->
     %% XEP-0198 says: "For client-to-server connections, the client MUST NOT
     %% attempt to enable stream management until after it has completed Resource
     %% Binding unless it is resuming a previous session".  However, it also
@@ -2716,7 +2716,7 @@ handle_resume(StateData, Attrs) ->
 	  error
     end.
 
-update_num_stanzas_in(StateData, El) when StateData#state.sm_state == active ->
+update_num_stanzas_in(#state{sm_state = active} = StateData, El) ->
     NewNum = case {is_stanza(El), StateData#state.n_stanzas_in} of
 	       {true, 4294967295} ->
 		   0;
