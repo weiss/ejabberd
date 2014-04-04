@@ -114,6 +114,7 @@
 		ack_queue,
 		max_ack_queue,
 		resume_timeout,
+		pending_since,
 		resend_on_timeout,
 		n_stanzas_in = 0,
 		n_stanzas_out = 0,
@@ -1177,8 +1178,8 @@ session_established({xmlstreamerror, _}, StateData) ->
 session_established(closed, StateData)
     when StateData#state.resume_timeout > 0,
 	 StateData#state.sm_state == active orelse
-	 StateData#state.sm_state == waiting ->
-    fsm_next_state(wait_for_resume, StateData#state{sm_state = waiting});
+	 StateData#state.sm_state == pending ->
+    fsm_next_state(wait_for_resume, StateData#state{sm_state = pending});
 session_established(closed, StateData) ->
     {stop, normal, StateData}.
 
@@ -1272,6 +1273,9 @@ wait_for_resume(timeout, StateData) ->
     ?DEBUG("Timed out waiting for resumption of stream for ~s",
 	   [jlib:jid_to_string(StateData#state.jid)]),
     {stop, normal, StateData};
+wait_for_resume(closed, StateData) ->
+    ?DEBUG("Ignoring 'closed' event while waiting for resumption", []),
+    fsm_next_state(wait_for_resume, StateData);
 wait_for_resume(Event, StateData) ->
     ?ERROR_MSG("Unexpected event while waiting for resumption: ~p", [Event]),
     fsm_next_state(wait_for_resume, StateData).
@@ -1659,8 +1663,8 @@ handle_info({'DOWN', Monitor, _Type, _Object, _Info},
     when Monitor == StateData#state.socket_monitor ->
     if StateData#state.resume_timeout > 0,
        StateData#state.sm_state == active orelse
-       StateData#state.sm_state == waiting ->
-	   fsm_next_state(wait_for_resume, StateData#state{sm_state = waiting});
+       StateData#state.sm_state == pending ->
+	   fsm_next_state(wait_for_resume, StateData#state{sm_state = pending});
        true ->
 	   {stop, normal, StateData}
     end;
@@ -1806,7 +1810,7 @@ change_shaper(StateData, JID) ->
     (StateData#state.sockmod):change_shaper(StateData#state.socket,
 					    Shaper).
 
-send_text(StateData, Text) when StateData#state.sm_state == waiting ->
+send_text(StateData, Text) when StateData#state.sm_state == pending ->
     ?DEBUG("Cannot send text while waiting for resumption: ~p", [Text]);
 send_text(StateData, Text) when StateData#state.xml_socket ->
     ?DEBUG("Send Text on stream = ~p", [Text]),
@@ -1816,7 +1820,7 @@ send_text(StateData, Text) ->
     ?DEBUG("Send XML on stream = ~p", [Text]),
     (StateData#state.sockmod):send(StateData#state.socket, Text).
 
-send_element(StateData, El) when StateData#state.sm_state == waiting ->
+send_element(StateData, El) when StateData#state.sm_state == pending ->
     ?DEBUG("Cannot send element while waiting for resumption: ~p", [El]);
 send_element(StateData, El) when StateData#state.xml_socket ->
     (StateData#state.sockmod):send_xml(StateData#state.socket,
@@ -1824,7 +1828,7 @@ send_element(StateData, El) when StateData#state.xml_socket ->
 send_element(StateData, El) ->
     send_text(StateData, xml:element_to_binary(El)).
 
-send_stanza(StateData, Stanza) when StateData#state.sm_state == waiting ->
+send_stanza(StateData, Stanza) when StateData#state.sm_state == pending ->
     ack_queue_add(StateData, Stanza);
 send_stanza(StateData, Stanza) when StateData#state.sm_state == active ->
     send_stanza_and_ack_req(StateData, Stanza),
@@ -2423,9 +2427,15 @@ fsm_next_state_gc(StateName, PackedStateData) ->
 fsm_next_state(session_established, StateData) ->
     {next_state, session_established, StateData,
      ?C2S_HIBERNATE_TIMEOUT};
-fsm_next_state(wait_for_resume, StateData) ->
-    {next_state, wait_for_resume, StateData,
+fsm_next_state(wait_for_resume, #state{pending_since = undefined} =
+	       StateData) ->
+    {next_state, wait_for_resume,
+     StateData#state{pending_since = os:timestamp()},
      StateData#state.resume_timeout};
+fsm_next_state(wait_for_resume, StateData) ->
+    Diff = timer:now_diff(os:timestamp(), StateData#state.pending_since),
+    Timeout = max(StateData#state.resume_timeout - Diff div 1000, 1),
+    {next_state, wait_for_resume, StateData, Timeout};
 fsm_next_state(StateName, StateData) ->
     {next_state, StateName, StateData, ?C2S_OPEN_TIMEOUT}.
 
@@ -2434,9 +2444,15 @@ fsm_next_state(StateName, StateData) ->
 fsm_reply(Reply, session_established, StateData) ->
     {reply, Reply, session_established, StateData,
      ?C2S_HIBERNATE_TIMEOUT};
-fsm_reply(Reply, wait_for_resume, StateData) ->
-    {reply, Reply, wait_for_resume, StateData,
+fsm_reply(Reply, wait_for_resume, #state{pending_since = undefined} =
+	  StateData) ->
+    {reply, Reply, wait_for_resume,
+     StateData#state{pending_since = os:timestamp()},
      StateData#state.resume_timeout};
+fsm_reply(Reply, wait_for_resume, StateData) ->
+    Diff = timer:now_diff(os:timestamp(), StateData#state.pending_since),
+    Timeout = max(StateData#state.resume_timeout - Diff div 1000, 1),
+    {reply, Reply, wait_for_resume, StateData, Timeout};
 fsm_reply(Reply, StateName, StateData) ->
     {reply, Reply, StateName, StateData, ?C2S_OPEN_TIMEOUT}.
 
@@ -2770,7 +2786,7 @@ limit_queue_length(#state{jid = JID,
     end.
 
 handle_unacked_stanzas(StateData, F) when StateData#state.sm_state == active;
-					  StateData#state.sm_state == waiting ->
+					  StateData#state.sm_state == pending ->
     Queue = StateData#state.ack_queue,
     case queue:len(Queue) of
       0 ->
@@ -2791,7 +2807,7 @@ handle_unacked_stanzas(_StateData, _F) ->
     ok.
 
 handle_unacked_stanzas(StateData) when StateData#state.sm_state == active;
-				       StateData#state.sm_state == waiting ->
+				       StateData#state.sm_state == pending ->
     F = case StateData#state.resend_on_timeout of
 	  true ->
 	      fun ejabberd_router:route/3;
