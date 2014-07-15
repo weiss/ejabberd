@@ -205,7 +205,8 @@ process2(RPath,
 	{unauthorized, <<"no-auth-provided">>} ->
 	    {401,
 	     [{<<"WWW-Authenticate">>,
-	       <<"basic realm=\"ejabberd\"">>}],
+	     <<"basic realm=\"Bitte Jabber-ID und RADIUS-Passwort "
+	       "verwenden\"">>}],
 	     ejabberd_web:make_xhtml([?XCT(<<"h1">>,
 					   ?T("Unauthorized"))])};
 	{unauthorized, Error} ->
