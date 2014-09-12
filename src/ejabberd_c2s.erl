@@ -1245,6 +1245,10 @@ session_established2(El, StateData) ->
 			   end;
 		       <<"iq">> ->
 			   case jlib:iq_query_info(NewEl) of
+			     #iq{xmlns = ?NS_GOOGLE_QUEUE,
+				 sub_el = #xmlel{children =
+						 [#xmlel{name = Command}]}} ->
+				 handle_gq_command(NewStateData, Command);
 			     #iq{xmlns = Xmlns} = IQ
 				 when Xmlns == (?NS_PRIVACY);
 				      Xmlns == (?NS_BLOCKING) ->
@@ -3045,6 +3049,19 @@ csi_flush_queue(#state{csi_state = CsiState, server = Server} = StateData) ->
 			     end, StateData1#state{csi_state = active},
 			     Stanzas),
     StateData2#state{csi_state = CsiState}.
+
+%% <http://mail.jabber.org/pipermail/summit/2010-February/000528.html>
+handle_gq_command(StateData, <<"enable">>) ->
+    StateData#state{csi_state = inactive};
+handle_gq_command(StateData, <<"disable">>) ->
+    NewStateData = csi_flush_queue(StateData),
+    NewStateData#state{csi_state = active};
+handle_gq_command(StateData, <<"flush">>) ->
+    csi_flush_queue(StateData);
+handle_gq_command(StateData, Command) ->
+    ?DEBUG("Got unknown google:queue command '~s' from ~s",
+	   [Command, jlib:jid_to_string(StateData#state.jid)]),
+    StateData.
 
 %%%----------------------------------------------------------------------
 %%% JID Set memory footprint reduction code
