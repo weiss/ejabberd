@@ -429,9 +429,18 @@ scram_passwords() ->
     ?INFO_MSG("Converting the stored passwords into "
 	      "SCRAM bits",
 	      []),
-    Fun = fun (#passwd{password = Password} = P) ->
-		  Scram = password_to_scram(Password),
-		  P#passwd{password = Scram}
+    Fun = fun (#passwd{us = {U, S}, password = Password} = P) ->
+		  ?INFO_MSG("SCRAM: Trying to hash password of ~s@~s", [U, S]),
+		  try password_to_scram(Password) of
+		      Scram ->
+			  ?INFO_MSG("SCRAM: Hashed password of ~s@~s", [U, S]),
+			  P#passwd{password = Scram}
+		  catch
+		      Exception:Reason ->
+			  ?WARNING_MSG("SCRAM: Cannot hash password of ~s@~s: ~s:~p",
+				       [U, S, Exception, Reason]),
+			  P
+		  end
 	  end,
     Fields = record_info(fields, passwd),
     mnesia:transform_table(passwd, Fun, Fields).
