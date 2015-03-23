@@ -2488,9 +2488,13 @@ fsm_next_state(wait_for_resume, #state{mgmt_pending_since = undefined} =
 	       StateData) ->
     ?INFO_MSG("Waiting for resumption of stream for ~s",
 	      [jlib:jid_to_string(StateData#state.jid)]),
+    Timeout = ejabberd_hooks:run_fold(mgmt_wait_for_resume_hook,
+                                      StateData#state.server,
+                                      StateData#state.mgmt_timeout,
+                                      [StateData#state.jid]),
     {next_state, wait_for_resume,
      StateData#state{mgmt_state = pending, mgmt_pending_since = os:timestamp()},
-     StateData#state.mgmt_timeout};
+     Timeout};
 fsm_next_state(wait_for_resume, StateData) ->
     Diff = timer:now_diff(os:timestamp(), StateData#state.mgmt_pending_since),
     Timeout = max(StateData#state.mgmt_timeout - Diff div 1000, 1),
@@ -2777,6 +2781,8 @@ handle_resume(StateData, Attrs) ->
 			    send_element(NewState, NewEl)
 		    end,
 	  handle_unacked_stanzas(NewState, SendFun),
+      ejabberd_hooks:run(mgmt_resend_stanzas_hook, StateData#state.server,
+                         [StateData#state.jid]),
 	  send_element(NewState,
 		       #xmlel{name = <<"r">>,
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
@@ -2835,6 +2841,10 @@ mgmt_queue_add(StateData, El) ->
 	       Num ->
 		   Num + 1
 	     end,
+	From_s = xml:get_tag_attr_s(<<"from">>, El),
+    From = jlib:string_to_jid(From_s),
+    ejabberd_hooks:run(mgmt_queue_add_hook, StateData#state.server,
+					   [From, StateData#state.jid, El]),
     NewQueue = queue:in({NewNum, now(), El}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
 			       mgmt_stanzas_out = NewNum},
