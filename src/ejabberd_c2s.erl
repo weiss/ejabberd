@@ -56,12 +56,23 @@
 	 get_subscribed/1,
          transform_listen_option/2]).
 
--export([init/1, wait_for_stream/2, wait_for_auth/2,
-	 wait_for_feature_request/2, wait_for_bind/2,
-	 wait_for_session/2, wait_for_sasl_response/2,
-	 wait_for_resume/2, session_established/2,
-	 handle_event/3, handle_sync_event/4, code_change/4,
-	 handle_info/3, terminate/3, print_state/1, opt_type/1]).
+%% gen_fsm callbacks
+-export([init/1,
+	 wait_for_stream/2,
+	 wait_for_auth/2,
+	 wait_for_feature_request/2,
+	 wait_for_bind/2,
+	 wait_for_session/2,
+	 wait_for_sasl_response/2,
+	 wait_for_resume/2,
+	 session_established/2,
+	 handle_event/3,
+	 handle_sync_event/4,
+	 code_change/4,
+	 handle_info/3,
+	 terminate/3,
+	 print_state/1
+     ]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -164,14 +175,14 @@
 %% XEP-0198:
 
 -define(IS_STREAM_MGMT_TAG(Name),
-	(Name == <<"enable">>) or
-	(Name == <<"resume">>) or
-	(Name == <<"a">>) or
-	(Name == <<"r">>)).
+	Name == <<"enable">>;
+	Name == <<"resume">>;
+	Name == <<"a">>;
+	Name == <<"r">>).
 
 -define(IS_SUPPORTED_MGMT_XMLNS(Xmlns),
-	(Xmlns == ?NS_STREAM_MGMT_2) or
-	(Xmlns == ?NS_STREAM_MGMT_3)).
+	Xmlns == ?NS_STREAM_MGMT_2;
+	Xmlns == ?NS_STREAM_MGMT_3).
 
 -define(MGMT_FAILED(Condition, Xmlns),
 	#xmlel{name = <<"failed">>,
@@ -1886,7 +1897,7 @@ send_text(StateData, Text) when StateData#state.mgmt_state == active ->
     case catch (StateData#state.sockmod):send(StateData#state.socket, Text) of
       {'EXIT', _} ->
 	  (StateData#state.sockmod):close(StateData#state.socket),
-	  {error, closed};
+	  error;
       _ ->
 	  ok
     end;
@@ -1907,7 +1918,12 @@ send_stanza(StateData, Stanza) when StateData#state.csi_state == inactive ->
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == pending ->
     mgmt_queue_add(StateData, Stanza);
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == active ->
-    NewStateData = send_stanza_and_ack_req(StateData, Stanza),
+    NewStateData = case send_stanza_and_ack_req(StateData, Stanza) of
+		     ok ->
+			 StateData;
+		     error ->
+			 StateData#state{mgmt_state = pending}
+		   end,
     mgmt_queue_add(NewStateData, Stanza);
 send_stanza(StateData, Stanza) ->
     send_element(StateData, Stanza),
@@ -2781,6 +2797,8 @@ handle_resume(StateData, Attrs) ->
 			    send_element(NewState, NewEl)
 		    end,
 	  handle_unacked_stanzas(NewState, SendFun),
+      ejabberd_hooks:run(mgmt_resend_stanzas_hook, StateData#state.server,
+                         [StateData#state.jid]),
 	  send_element(NewState,
 		       #xmlel{name = <<"r">>,
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
@@ -2826,12 +2844,11 @@ send_stanza_and_ack_req(StateData, Stanza) ->
     AckReq = #xmlel{name = <<"r">>,
 		    attrs = [{<<"xmlns">>, StateData#state.mgmt_xmlns}],
 		    children = []},
-    case send_element(StateData, Stanza) == ok andalso
-	 send_element(StateData, AckReq) == ok of
-      true ->
-	  StateData;
-      false ->
-	  StateData#state{mgmt_state = pending}
+    case send_element(StateData, Stanza) of
+      ok ->
+	  send_element(StateData, AckReq);
+      error ->
+	  error
     end.
 
 mgmt_queue_add(StateData, El) ->
