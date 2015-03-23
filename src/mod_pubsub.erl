@@ -3028,6 +3028,14 @@ publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload) ->
 publish_item(Host, ServerHost, Node, Publisher, <<>>, Payload, Access) ->
     publish_item(Host, ServerHost, Node, Publisher, uniqid(), Payload, Access);
 publish_item(Host, ServerHost, Node, Publisher, ItemId, Payload, Access) ->
+    %% TODO: to implement publish-options we need to define Action as
+    %% node_call(pubsub_publish_item_with_opts, ...) in case
+    %% publish_options_feature (feature is activated).
+    %% Before Options has to be set using a new gen_pubsub_node callback
+    %% options(PubOptions), so options can be overwritten with publish-options.
+    %% pubsub_publish_item_with_opts has extra argument PubOptions and may
+    %% update Payload (needs to be read from pubsub_state before breadcasting /
+    %% caching)
     Action = fun (#pubsub_node{options = Options, type = Type, id = NodeId}) ->
 		     Features = features(Type),
 		     PublishFeature = lists:member(<<"publish">>, Features),
