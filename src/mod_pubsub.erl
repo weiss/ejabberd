@@ -1808,6 +1808,7 @@ iq_disco_info(Host, SNode, From, Lang) ->
  %   Node = string_to_node(RealSNode),
     case Node of
       <<>> ->
+      % TODO: we need a hook to add type "push"
 	  {result,
 	   [#xmlel{name = <<"identity">>,
 		   attrs =
