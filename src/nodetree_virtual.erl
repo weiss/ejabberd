@@ -66,9 +66,14 @@ get_node(Host, Node) ->
 get_node(Nidx) ->
     {Host, Node} = nodeid(Nidx),
     Record = #pubsub_node{nodeid = Node, id = Nidx},
-    Module = jlib:binary_to_atom(<<"node_", (Record#pubsub_node.type)/binary>>),
+    Type = case mod_pubsub:config(Host, plugins) of
+        [T] -> T;
+        _ -> Record#pubsub_node.type
+    end,
+    Module = jlib:binary_to_atom(<<"node_", (Type)/binary>>),
     Record#pubsub_node{owners = [{<<"">>, Host, <<"">>}],
-	options = Module:options()}.
+	                   options = Module:options(),
+                       type = Type}.
 
 get_nodes(Host, _From) ->
     get_nodes(Host).
