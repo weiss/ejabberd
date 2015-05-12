@@ -2799,6 +2799,8 @@ handle_resume(StateData, Attrs) ->
 			      children = []}),
 	  FlushedState = csi_queue_flush(NewState),
 	  NewStateData = FlushedState#state{csi_state = active},
+      ejabberd_hooks:run(mgmt_resume_session_hook, StateData#state.server,
+                         [StateData#state.jid]),
 	  ?INFO_MSG("Resumed session for ~s",
 		    [jlib:jid_to_string(NewStateData#state.jid)]),
 	  {ok, NewStateData};
@@ -2844,7 +2846,7 @@ send_stanza_and_ack_req(StateData, Stanza) ->
     end.
 
 mgmt_queue_add(StateData, El) ->
-    NewNum = case StateData#state.mgmt_stanzas_out of
+   NewNum = case StateData#state.mgmt_stanzas_out of
 	       4294967295 ->
 		   0;
 	       Num ->
@@ -2852,11 +2854,16 @@ mgmt_queue_add(StateData, El) ->
 	     end,
 	From_s = xml:get_tag_attr_s(<<"from">>, El),
     From = jlib:string_to_jid(From_s),
+<<<<<<< HEAD
     ejabberd_hooks:run(mgmt_queue_add_hook, StateData#state.server,
 					   [From, StateData#state.jid, El]),
+=======
+>>>>>>> ff4b5496987d54bd4bdd9287527301241a39d3b4
     NewQueue = queue:in({NewNum, now(), El}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
 			       mgmt_stanzas_out = NewNum},
+    ejabberd_hooks:run(mgmt_queue_add_hook, StateData#state.server,
+					  [From, StateData#state.jid, El]),
     check_queue_length(NewState).
 
 mgmt_queue_drop(StateData, NumHandled) ->
