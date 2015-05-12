@@ -2854,11 +2854,6 @@ mgmt_queue_add(StateData, El) ->
 	     end,
 	From_s = xml:get_tag_attr_s(<<"from">>, El),
     From = jlib:string_to_jid(From_s),
-<<<<<<< HEAD
-    ejabberd_hooks:run(mgmt_queue_add_hook, StateData#state.server,
-					   [From, StateData#state.jid, El]),
-=======
->>>>>>> ff4b5496987d54bd4bdd9287527301241a39d3b4
     NewQueue = queue:in({NewNum, now(), El}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
 			       mgmt_stanzas_out = NewNum},
