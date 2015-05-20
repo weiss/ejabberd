@@ -2791,8 +2791,6 @@ handle_resume(StateData, Attrs) ->
 			    send_element(NewState, NewEl)
 		    end,
 	  handle_unacked_stanzas(NewState, SendFun),
-      ejabberd_hooks:run(mgmt_resend_stanzas_hook, StateData#state.server,
-                         [StateData#state.jid]),
 	  send_element(NewState,
 		       #xmlel{name = <<"r">>,
 			      attrs = [{<<"xmlns">>, AttrXmlns}],
