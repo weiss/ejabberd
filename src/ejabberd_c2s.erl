@@ -2798,7 +2798,7 @@ handle_resume(StateData, Attrs) ->
 	  FlushedState = csi_queue_flush(NewState),
 	  NewStateData = FlushedState#state{csi_state = active},
       ejabberd_hooks:run(mgmt_resume_session_hook, StateData#state.server,
-                         [StateData#state.jid]),
+                         [NewStateData#state.jid]),
 	  ?INFO_MSG("Resumed session for ~s",
 		    [jlib:jid_to_string(NewStateData#state.jid)]),
 	  {ok, NewStateData};
