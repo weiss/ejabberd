@@ -2866,8 +2866,9 @@ mgmt_queue_add(StateData, El) ->
     check_queue_length(NewState).
 
 mgmt_queue_drop(StateData, NumHandled) ->
-    NewQueue = jlib:queue_drop_while(fun({N, _T, _E}) -> N =< NumHandled end,
-				     StateData#state.mgmt_queue),
+    NewQueue =
+    jlib:queue_drop_while(fun({N, _T, _E, _R}) -> N =< NumHandled end,
+				          StateData#state.mgmt_queue),
     StateData#state{mgmt_queue = NewQueue}.
 
 check_queue_length(#state{mgmt_max_queue = Limit} = StateData)
