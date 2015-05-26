@@ -1726,15 +1726,12 @@ handle_info(system_shutdown, StateName, StateData) ->
     case StateName of
       wait_for_stream ->
 	  send_header(StateData, ?MYNAME, <<"1.0">>, <<"en">>),
-	  send_element(StateData, ?SERR_SYSTEM_SHUTDOWN),
-	  send_trailer(StateData),
-	  ok;
+      ok;
       _ ->
-	  send_element(StateData, ?SERR_SYSTEM_SHUTDOWN),
-	  send_trailer(StateData),
 	  ok
     end,
-    {stop, normal, StateData};
+    XmlElement = ?SERR_SYSTEM_SHUTDOWN,
+    handle_info({kick, system_shutdown, XmlElement}, StateName, StateData);
 handle_info({route_xmlstreamelement, El}, _StateName, StateData) ->
     {next_state, NStateName, NStateData, _Timeout} =
 	session_established({xmlstreamelement, El}, StateData),
@@ -2792,7 +2789,7 @@ handle_resume(StateData, Attrs) ->
 				       {<<"h">>, AttrH},
 				       {<<"previd">>, AttrId}],
 			      children = []}),
-	  SendFun = fun(_F, _T, El, Time) ->
+	  SendFun = fun(_F, _T, El, Time, _RerouteFlag) ->
 			    NewEl = add_resent_delay_info(NewState, El, Time),
 			    send_element(NewState, NewEl)
 		    end,
@@ -2858,11 +2855,14 @@ mgmt_queue_add(StateData, El) ->
 	     end,
 	From_s = xml:get_tag_attr_s(<<"from">>, El),
     From = jlib:string_to_jid(From_s),
-    NewQueue = queue:in({NewNum, now(), El}, StateData#state.mgmt_queue),
+    %% RerouteFlag may be true|false|false_on_system_shutdown
+    RerouteFlag =
+    ejabberd_hooks:run_fold(mgmt_queue_add_hook, StateData#state.server,
+                            true, [From, StateData#state.jid, El]),
+    NewQueue =
+    queue:in({NewNum, now(), El, RerouteFlag}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
 			       mgmt_stanzas_out = NewNum},
-    ejabberd_hooks:run(mgmt_queue_add_hook, StateData#state.server,
-					  [From, StateData#state.jid, El]),
     check_queue_length(NewState).
 
 mgmt_queue_drop(StateData, NumHandled) ->
@@ -2894,12 +2894,12 @@ handle_unacked_stanzas(StateData, F)
 	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
 		    [N, jlib:jid_to_string(StateData#state.jid)]),
 	  lists:foreach(
-	    fun({_, Time, #xmlel{attrs = Attrs} = El}) ->
+	    fun({_, Time, #xmlel{attrs = Attrs} = El, RerouteFlag}) ->
 		    From_s = xml:get_attr_s(<<"from">>, Attrs),
 		    From = jlib:string_to_jid(From_s),
 		    To_s = xml:get_attr_s(<<"to">>, Attrs),
 		    To = jlib:string_to_jid(To_s),
-		    F(From, To, El, Time)
+		    F(From, To, El, Time, RerouteFlag)
 	    end, queue:to_list(Queue))
     end;
 handle_unacked_stanzas(_StateData, _F) ->
@@ -2918,12 +2918,21 @@ handle_unacked_stanzas(StateData)
 	end,
     ReRoute = case ResendOnTimeout of
 		true ->
-		    fun(From, To, El, Time) ->
-			    NewEl = add_resent_delay_info(StateData, El, Time),
-			    ejabberd_router:route(From, To, NewEl)
+            Shutdown = StateData#state.authenticated =:= system_shutdown,
+		    fun(From, To, El, Time, RerouteFlag) ->
+                RerouteStanza =
+                (RerouteFlag =:= true) or
+                ((RerouteFlag =:= false_on_system_shutdown) and not Shutdown),
+                case RerouteStanza of
+                    true ->
+			            NewEl = add_resent_delay_info(StateData, El, Time),
+			            ejabberd_router:route(From, To, NewEl);
+                    false ->
+                        ok
+                end
 		    end;
 		false ->
-		    fun(From, To, El, _Time) ->
+		    fun(From, To, El, _Time, _RerouteFlag) ->
 			    Err =
 				jlib:make_error_reply(El,
 						      ?ERR_SERVICE_UNAVAILABLE),
@@ -2940,10 +2949,10 @@ handle_unacked_stanzas(StateData)
 		%% stanza could easily lead to unexpected results as well.
 		case is_encapsulated_forward(El) of
 		  true ->
-		      ?DEBUG("Dropping forwarded stanza from ~s",
-			     [xml:get_attr_s(<<"from">>, El#xmlel.attrs)]);
+		        ?DEBUG("Dropping forwarded stanza from ~s",
+			           [xml:get_attr_s(<<"from">>, El#xmlel.attrs)]);
 		  false ->
-		      ReRoute(From, To, El, Time)
+                ReRoute(From, To, El, Time)
 		end
 	end,
     handle_unacked_stanzas(StateData, F);
