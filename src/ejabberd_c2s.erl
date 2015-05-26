@@ -2939,7 +2939,7 @@ handle_unacked_stanzas(StateData)
 			    ejabberd_router:route(To, From, Err)
 		    end
 	      end,
-    F = fun(From, To, El, Time) ->
+    F = fun(From, To, El, Time, RerouteFlag) ->
 		%% We'll drop the stanza if it was <forwarded/> by some
 		%% encapsulating protocol as per XEP-0297.  One such protocol is
 		%% XEP-0280, which says: "When a receiving server attempts to
@@ -2952,7 +2952,7 @@ handle_unacked_stanzas(StateData)
 		        ?DEBUG("Dropping forwarded stanza from ~s",
 			           [xml:get_attr_s(<<"from">>, El#xmlel.attrs)]);
 		  false ->
-                ReRoute(From, To, El, Time)
+                ReRoute(From, To, El, Time, RerouteFlag)
 		end
 	end,
     handle_unacked_stanzas(StateData, F);
