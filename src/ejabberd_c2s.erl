@@ -2501,12 +2501,22 @@ fsm_next_state(wait_for_resume, #state{mgmt_pending_since = undefined} =
 	       StateData) ->
     ?INFO_MSG("Waiting for resumption of stream for ~s",
 	      [jlib:jid_to_string(StateData#state.jid)]),
-    Timeout = ejabberd_hooks:run_fold(mgmt_wait_for_resume_hook,
-                                      StateData#state.server,
-                                      StateData#state.mgmt_timeout,
-                                      [StateData#state.jid]),
+    Timeout =
+    case StateData#state.mgmt_timeout of
+        OldTimeout when OldTimeout > 0 ->
+            %% mgmt_wait_for_resume_hook allows adjusting the resumption
+            %% timeout. It's run if the client enabled stream resumption and
+            %% mgmt_timeout has a value > 0 (configured by client or by
+            %% resume_timeout config option)
+            ejabberd_hooks:run_fold(mgmt_wait_for_resume_hook,
+                                    StateData#state.server,
+                                    OldTimeout,
+                                    [StateData#state.jid]);
+        T -> T
+    end,
     {next_state, wait_for_resume,
-     StateData#state{mgmt_state = pending, mgmt_pending_since = os:timestamp()},
+     StateData#state{mgmt_state = pending, mgmt_pending_since = os:timestamp(),
+                     mgmt_timeout = Timeout},
      Timeout};
 fsm_next_state(wait_for_resume, StateData) ->
     Diff = timer:now_diff(os:timestamp(), StateData#state.mgmt_pending_since),
