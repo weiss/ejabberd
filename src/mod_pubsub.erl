@@ -55,7 +55,6 @@
 -include("adhoc.hrl").
 -include("jlib.hrl").
 -include("pubsub.hrl").
--include("pubsub.hrl").
 
 -define(STDTREE, <<"tree">>).
 -define(STDNODE, <<"flat">>).
@@ -210,7 +209,7 @@
 	db_type                 :: atom()
 	}
 
-).
+    ).
 
 
 start_link(Host, Opts) ->
@@ -726,10 +725,8 @@ out_subscription(User, Server, JID, subscribed) ->
 out_subscription(_, _, _, _) ->
     true.
 
-in_subscription(_, User, Server, Owner, unsubscribed,
-		_) ->
-    unsubscribe_user(jlib:make_jid(User, Server, <<"">>),
-		     Owner),
+in_subscription(_, User, Server, Owner, unsubscribed, _) ->
+    unsubscribe_user(jlib:make_jid(User, Server, <<>>), Owner),
     true;
 in_subscription(_, _, _, _, _, _) ->
     true.
@@ -1965,24 +1962,6 @@ delete_node(Host, Node, Owner) ->
 	    Error
     end.
 
-%% @spec (Host, Node, From, JID, Configuration) ->
-%%		  {error, Reason::stanzaError()} |
-%%		  {result, []}
-%%	 Host = host()
-%%	 Node = pubsubNode()
-%%	 From = jid()
-%%	 JID = jid()
--spec(subscribe_node/5 ::
-(
-  Host          :: mod_pubsub:host(),
-  Node          :: mod_pubsub:nodeId(),
-  From          :: jid(),
-  JID           :: binary(),
-  Configuration :: [xmlel()])
-    -> {result, [xmlel(),...]}
-    %%%
-     | {error, xmlel()}
-).
 %% @see node_hometree:subscribe_node/5
 %% @doc <p>Accepts or rejects subcription requests on a PubSub node.</p>
 %%<p>There are several reasons why the subscription request might fail:</p>
@@ -3151,15 +3130,11 @@ node_to_deliver(LJID, NodeOptions) ->
 
 sub_option_can_deliver(items, _, {subscription_type, nodes}) -> false;
 sub_option_can_deliver(nodes, _, {subscription_type, items}) -> false;
-sub_option_can_deliver(_, _, {subscription_depth, all})      -> true;
-sub_option_can_deliver(_, Depth, {subscription_depth, D})    -> Depth =< D;
-sub_option_can_deliver(_, _, {deliver, false})	       -> false;
-sub_option_can_deliver(_, _, {expire, When})		 -> now() < When;
-sub_option_can_deliver(_, _, _)			      -> true.
-
-node_to_deliver(LJID, NodeOptions) ->
-    PresenceDelivery = get_option(NodeOptions, presence_based_delivery),
-    presence_can_deliver(LJID, PresenceDelivery).
+sub_option_can_deliver(_, _, {subscription_depth, all}) -> true;
+sub_option_can_deliver(_, Depth, {subscription_depth, D}) -> Depth =< D;
+sub_option_can_deliver(_, _, {deliver, false}) -> false;
+sub_option_can_deliver(_, _, {expire, When}) -> now() < When;
+sub_option_can_deliver(_, _, _) -> true.
 
 -spec(presence_can_deliver/2 ::
     (
@@ -3425,7 +3400,8 @@ get_node_subs(Host, #pubsub_node{type = Type, id = Nidx}) ->
 	Other -> Other
     end.
 
-get_options_for_subs(NodeID, Subs) ->
+get_options_for_subs(Host, Nidx, Subs) ->
+    SubModule = subscription_plugin(Host),
     lists:foldl(fun({JID, subscribed, SubID}, Acc) ->
 		case SubModule:get_subscription(JID, Nidx, SubID) of
 		    #pubsub_subscription{options = Options} -> [{JID, SubID, Options} | Acc];
@@ -3569,20 +3545,11 @@ get_configure(Host, ServerHost, Node, From, Lang) ->
 						attrs = [{<<"xmlns">>, ?NS_XDATA},
 						    {<<"type">>, <<"form">>}],
 						children =
-						    [#xmlel{name = <<"x">>,
-							    attrs =
-								[{<<"xmlns">>,
-								  ?NS_XDATA},
-								 {<<"type">>,
-								  <<"form">>}],
-							    children =
-								get_configure_xfields(Type,
-										      Options,
-										      Lang,
-										      Groups)}]}]}]};
-		       _ -> {error, ?ERR_FORBIDDEN}
-		     end
-	     end,
+						get_configure_xfields(Type, Options, Lang, Groups)}]}]}]};
+		_ ->
+		    {error, ?ERR_FORBIDDEN}
+	    end
+    end,
     case transaction(Host, Node, Action, sync_dirty) of
 	{result, {_, Result}} -> {result, Result};
 	Other -> Other
@@ -4103,7 +4070,21 @@ tree_action(Host, Function, Args) ->
     ?DEBUG("tree_action ~p ~p ~p", [Host, Function, Args]),
     ServerHost = serverhost(Host),
     Fun = fun () -> tree_call(Host, Function, Args) end,
-    catch mnesia:sync_dirty(Fun).
+    case gen_mod:db_type(ServerHost, ?MODULE) of
+	mnesia ->
+	    catch mnesia:sync_dirty(Fun);
+	odbc ->
+	    case catch ejabberd_odbc:sql_bloc(ServerHost, Fun) of
+		{atomic, Result} ->
+		    Result;
+		{aborted, Reason} ->
+		    ?ERROR_MSG("transaction return internal error: ~p~n", [{aborted, Reason}]),
+		    {error, ?ERR_INTERNAL_SERVER_ERROR}
+	    end;
+	Other ->
+	    ?ERROR_MSG("unsupported backend: ~p~n", [Other]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR}
+    end.
 
 %% @doc <p>node plugin call.</p>
 node_call(Host, Type, Function, Args) ->
@@ -4157,24 +4138,42 @@ transaction(Host, Fun, Trans) ->
     end,
     transaction_retry(Host, ServerHost, Fun, Trans, DBType, Retry).
 
-transaction(Fun, Trans) ->
-    case catch mnesia:Trans(Fun) of
-      {result, Result} -> {result, Result};
-      {error, Error} -> {error, Error};
-      {atomic, {result, Result}} -> {result, Result};
-      {atomic, {error, Error}} -> {error, Error};
-      {aborted, Reason} ->
-	  ?ERROR_MSG("transaction return internal error: ~p~n",
-		     [{aborted, Reason}]),
-	  {error, ?ERR_INTERNAL_SERVER_ERROR};
-      {'EXIT', Reason} ->
-	  ?ERROR_MSG("transaction return internal error: ~p~n",
-		     [{'EXIT', Reason}]),
-	  {error, ?ERR_INTERNAL_SERVER_ERROR};
-      Other ->
-	  ?ERROR_MSG("transaction return internal error: ~p~n",
-		     [Other]),
-	  {error, ?ERR_INTERNAL_SERVER_ERROR}
+transaction_retry(_Host, _ServerHost, _Fun, _Trans, _DBType, 0) ->
+    {error, ?ERR_INTERNAL_SERVER_ERROR};
+transaction_retry(Host, ServerHost, Fun, Trans, DBType, Count) ->
+    Res = case DBType of
+	mnesia ->
+	    catch mnesia:Trans(Fun);
+	odbc ->
+	    SqlFun = case Trans of
+		transaction -> sql_transaction;
+		_ -> sql_bloc
+	    end,
+	    catch ejabberd_odbc:SqlFun(ServerHost, Fun);
+	_ ->
+	    {unsupported, DBType}
+    end,
+    case Res of
+	{result, Result} ->
+	    {result, Result};
+	{error, Error} ->
+	    {error, Error};
+	{atomic, {result, Result}} ->
+	    {result, Result};
+	{atomic, {error, Error}} ->
+	    {error, Error};
+	{aborted, Reason} ->
+	    ?ERROR_MSG("transaction return internal error: ~p~n", [{aborted, Reason}]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR};
+	{'EXIT', {timeout, _} = Reason} ->
+	    ?ERROR_MSG("transaction return internal error: ~p~n", [Reason]),
+	    transaction_retry(Host, ServerHost, Fun, Trans, DBType, Count - 1);
+	{'EXIT', Reason} ->
+	    ?ERROR_MSG("transaction return internal error: ~p~n", [{'EXIT', Reason}]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR};
+	Other ->
+	    ?ERROR_MSG("transaction return internal error: ~p~n", [Other]),
+	    {error, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 %%%% helpers
@@ -4296,61 +4295,45 @@ purge_offline(LJID) ->
 	    end,
 	    {ok, []}, Plugins),
     case Result of
-      {ok, Affiliations} ->
-	  lists:foreach(fun ({#pubsub_node{nodeid = {_, NodeId},
-					   options = Options, type = Type},
-			      Affiliation})
-				when Affiliation == owner orelse
-				       Affiliation == publisher ->
-				Action = fun (#pubsub_node{type = NType,
-							   id = NodeIdx}) ->
-						 node_call(NType, get_items,
-							   [NodeIdx,
-							    service_jid(Host)])
-					 end,
-				case transaction(Host, NodeId, Action,
-						 sync_dirty)
-				    of
-				  {result, {_, []}} -> true;
-				  {result, {_, Items}} ->
-				      Features = features(Type),
-				      case {lists:member(<<"retract-items">>,
-							 Features),
-					    lists:member(<<"persistent-items">>,
-							 Features),
-					    get_option(Options, persist_items),
-					    get_option(Options, purge_offline)}
-					  of
-					{true, true, true, true} ->
-					    ForceNotify = get_option(Options,
-								     notify_retract),
-					    lists:foreach(fun
-							    (#pubsub_item{itemid
-									      =
-									      {ItemId,
-									       _},
-									  modification
-									      =
-									      {_,
-									       Modification}}) ->
-								case
-								  Modification
-								    of
-								  {User, Server,
-								   _} ->
-								      delete_item(Host,
-										  NodeId,
-										  LJID,
-										  ItemId,
-										  ForceNotify);
-								  _ -> true
-								end;
-							    (_) -> true
-							  end,
-							  Items);
-					_ -> true
-				      end;
-				  Error -> Error
+	{ok, Affs} ->
+	    lists:foreach(
+		    fun ({Node, Affiliation}) ->
+			    Options = Node#pubsub_node.options,
+			    Publisher = lists:member(Affiliation, [owner,publisher,publish_only]),
+			    Open = (get_option(Options, publish_model) == open),
+			    Purge = (get_option(Options, purge_offline)
+				andalso get_option(Options, persist_items)),
+			    if (Publisher or Open) and Purge ->
+				purge_offline(Host, LJID, Node);
+			    true ->
+				ok
+			    end
+		    end, lists:usort(lists:flatten(Affs)));
+	{Error, _} ->
+	    ?DEBUG("on_user_offline ~p", [Error])
+    end.
+
+purge_offline(Host, LJID, Node) ->
+    Nidx = Node#pubsub_node.id,
+    Type = Node#pubsub_node.type,
+    Options = Node#pubsub_node.options,
+    case node_action(Host, Type, get_items, [Nidx, service_jid(Host), none]) of
+	{result, {[], _}} ->
+	    ok;
+	{result, {Items, _}} ->
+	    {User, Server, _} = LJID,
+	    PublishModel = get_option(Options, publish_model),
+	    ForceNotify = get_option(Options, notify_retract),
+	    {_, NodeId} = Node#pubsub_node.nodeid,
+	    lists:foreach(fun
+		    (#pubsub_item{itemid = {ItemId, _}, modification = {_, {U, S, _}}})
+			    when (U == User) and (S == Server) ->
+			case node_action(Host, Type, delete_item, [Nidx, {U, S, <<>>}, PublishModel, ItemId]) of
+			    {result, {_, broadcast}} ->
+				broadcast_retract_items(Host, NodeId, Nidx, Type, Options, [ItemId], ForceNotify),
+				case get_cached_item(Host, Nidx) of
+				    #pubsub_item{itemid = {ItemId, Nidx}} -> unset_cached_item(Host, Nidx);
+				    _ -> ok
 				end;
 			    {result, _} ->
 				ok;
