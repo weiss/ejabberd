@@ -56,23 +56,12 @@
 	 get_subscribed/1,
          transform_listen_option/2]).
 
-%% gen_fsm callbacks
--export([init/1,
-	 wait_for_stream/2,
-	 wait_for_auth/2,
-	 wait_for_feature_request/2,
-	 wait_for_bind/2,
-	 wait_for_session/2,
-	 wait_for_sasl_response/2,
-	 wait_for_resume/2,
-	 session_established/2,
-	 handle_event/3,
-	 handle_sync_event/4,
-	 code_change/4,
-	 handle_info/3,
-	 terminate/3,
-	 print_state/1
-     ]).
+-export([init/1, wait_for_stream/2, wait_for_auth/2,
+	 wait_for_feature_request/2, wait_for_bind/2,
+	 wait_for_session/2, wait_for_sasl_response/2,
+	 wait_for_resume/2, session_established/2,
+	 handle_event/3, handle_sync_event/4, code_change/4,
+	 handle_info/3, terminate/3, print_state/1, opt_type/1]).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
