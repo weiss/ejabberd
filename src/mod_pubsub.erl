@@ -3942,13 +3942,31 @@ host(ServerHost) ->
 serverhost({_U, Server, _R})->
     Server;
 serverhost(Host) ->
-    case binary:match(Host, <<"pubsub.">>) of
-	{0,7} ->
-	    [_,ServerHost] = binary:split(Host, <<".">>),
-	    ServerHost;
-	_ ->
-	    Host
+    MatchingServerHost =
+    lists:foldl(
+        fun
+        (ServerHost, not_matching) ->
+            case config(gen_mod:get_module_proc(ServerHost, config), host) of
+                Host -> ServerHost;
+                _ -> not_matching
+            end;
+        (_ServerHost, Matching) -> Matching
+        end,
+        not_matching,
+        ?MYHOSTS),
+    case MatchingServerHost of
+        not_matching -> Host;
+        _ -> MatchingServerHost
     end.
+
+
+    %case binary:match(Host, <<"pubsub.">>) of
+	%{0,7} ->
+	%    [_,ServerHost] = binary:split(Host, <<".">>),
+	%    ServerHost;
+	%_ ->
+	%    Host
+    %end.
 
 tree(Host) ->
     case config(serverhost(Host), nodetree) of
