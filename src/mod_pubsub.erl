@@ -3946,7 +3946,7 @@ serverhost(Host) ->
     lists:foldl(
         fun
         (ServerHost, not_matching) ->
-            case config(gen_mod:get_module_proc(ServerHost, config), host) of
+            case config(ServerHost, host) of
                 Host -> ServerHost;
                 _ -> not_matching
             end;
