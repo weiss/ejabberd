@@ -3959,15 +3959,6 @@ serverhost(Host) ->
         _ -> MatchingServerHost
     end.
 
-
-    %case binary:match(Host, <<"pubsub.">>) of
-	%{0,7} ->
-	%    [_,ServerHost] = binary:split(Host, <<".">>),
-	%    ServerHost;
-	%_ ->
-	%    Host
-    %end.
-
 tree(Host) ->
     case config(serverhost(Host), nodetree) of
 	undefined -> tree(Host, ?STDTREE);
@@ -4137,14 +4128,12 @@ transaction(Host, Node, Action, Trans) ->
     transaction(Host, fun () ->
 		case tree_call(Host, get_node, [Host, Node]) of
 		    N when is_record(N, pubsub_node) ->
-            ?DEBUG("+++++ tree_call[get_node] returned node ~p", [N]),
 			case Action(N) of
 			    {result, Result} -> {result, {N, Result}};
 			    {atomic, {result, Result}} -> {result, {N, Result}};
 			    Other -> Other
 			end;
 		    Error ->
-            ?DEBUG("+++++ tree_call[get_node] returned error ~p", [Error]),
 			Error
 		end
 	end,
