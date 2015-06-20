@@ -67,9 +67,10 @@ get_node(Host, Node) ->
 get_node(Nidx) ->
     {Host, Node} = nodeid(Nidx),
     Record = #pubsub_node{nodeid = Node, id = Nidx},
+    ServerHost = mod_pubsub:serverhost(Host),
     ?DEBUG("+++++ nodtree_virtual:get_node, plugins: ~p, default type: ~p",
-           [mod_pubsub:config(Host, plugins, undefined), Record#pubsub_node.type]),
-    Type = case mod_pubsub:config(Host, plugins, undefined) of
+           [mod_pubsub:config(ServerHost, plugins, undefined), Record#pubsub_node.type]),
+    Type = case mod_pubsub:config(ServerHost, plugins, undefined) of
         [T] -> T;
         _ -> Record#pubsub_node.type
     end,
