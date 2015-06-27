@@ -3942,21 +3942,9 @@ host(ServerHost) ->
 serverhost({_U, Server, _R})->
     Server;
 serverhost(Host) ->
-    MatchingServerHost =
-    lists:foldl(
-        fun
-        (ServerHost, not_matching) ->
-            case config(ServerHost, host) of
-                Host -> ServerHost;
-                _ -> not_matching
-            end;
-        (_ServerHost, Matching) -> Matching
-        end,
-        not_matching,
-        ?MYHOSTS),
-    case MatchingServerHost of
-        not_matching -> Host;
-        _ -> MatchingServerHost
+    case [H || H <- ?MYHOSTS, config(H, host) == Host] of
+        [ServerHost | _] -> ServerHost;
+        _ -> Host
     end.
 
 tree(Host) ->
