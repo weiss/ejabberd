@@ -2497,10 +2497,13 @@ fsm_next_state(wait_for_resume, #state{mgmt_pending_since = undefined} =
             %% timeout. It's run if the client enabled stream resumption and
             %% mgmt_timeout has a value > 0 (configured by client or by
             %% resume_timeout config option)
+            UnackedStanzas =
+            lists:map(fun({_, Timestamp, El, _}) -> {Timestamp, El} end,
+                      queue:to_list(StateData#state.mgmt_queue)),
             ejabberd_hooks:run_fold(mgmt_wait_for_resume_hook,
                                     StateData#state.server,
                                     OldTimeout,
-                                    [StateData#state.jid]);
+                                    [StateData#state.jid, UnackedStanzas]);
         T -> T
     end,
     {next_state, wait_for_resume,
@@ -2852,12 +2855,10 @@ mgmt_queue_add(StateData, El) ->
 	       Num ->
 		   Num + 1
 	     end,
-	From_s = xml:get_tag_attr_s(<<"from">>, El),
-    From = jlib:string_to_jid(From_s),
     %% RerouteFlag may be true|false|false_on_system_shutdown
     RerouteFlag =
     ejabberd_hooks:run_fold(mgmt_queue_add_hook, StateData#state.server,
-                            true, [From, StateData#state.jid, El]),
+                            true, [StateData#state.jid, El]),
     NewQueue =
     queue:in({NewNum, now(), El, RerouteFlag}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
