@@ -60,6 +60,29 @@
 -define(STDNODE, <<"flat">>).
 -define(PEPNODE, <<"pep">>).
 
+-define(DEFAULT_NODE_OPTIONS,
+        [deliver_payloads,
+         deliver_notifications,
+         notify_config,
+         notify_delete,
+         notify_retract,
+         persist_items,
+         title,
+         max_items,
+         subscribe,
+         access_model,
+         roster_groups_allowed,
+         publish_model,
+         purge_offline,
+         notification_type,
+         max_payload_size,
+         send_last_published_item,
+         presence_based_delivery,
+         collection,
+         node_type,
+         type,
+         body_xslt]).
+
 %% exports for hooks
 -export([presence_probe/3, caps_update/3,
     in_subscription/6, out_subscription/4,
@@ -3702,43 +3725,74 @@ max_items(Host, Options) ->
 	get_option(Options, Var, []))).
 
 get_configure_xfields(_Type, Options, Lang, Groups) ->
-    [?XFIELD(<<"hidden">>, <<>>, <<"FORM_TYPE">>, (?NS_PUBSUB_NODE_CONFIG)),
-	?BOOL_CONFIG_FIELD(<<"Deliver payloads with event notifications">>,
-	    deliver_payloads),
-	?BOOL_CONFIG_FIELD(<<"Deliver event notifications">>,
-	    deliver_notifications),
-	?BOOL_CONFIG_FIELD(<<"Notify subscribers when the node configuration changes">>,
-	    notify_config),
-	?BOOL_CONFIG_FIELD(<<"Notify subscribers when the node is deleted">>,
-	    notify_delete),
-	?BOOL_CONFIG_FIELD(<<"Notify subscribers when items are removed from the node">>,
-	    notify_retract),
-	?BOOL_CONFIG_FIELD(<<"Persist items to storage">>,
-	    persist_items),
-	?STRING_CONFIG_FIELD(<<"A friendly name for the node">>,
-	    title),
-	?INTEGER_CONFIG_FIELD(<<"Max # of items to persist">>,
-	    max_items),
-	?BOOL_CONFIG_FIELD(<<"Whether to allow subscriptions">>,
-	    subscribe),
-	?ALIST_CONFIG_FIELD(<<"Specify the access model">>,
-	    access_model, [open, authorize, presence, roster, whitelist]),
-	?LISTM_CONFIG_FIELD(<<"Roster groups allowed to subscribe">>,
-	    roster_groups_allowed, Groups),
-	?ALIST_CONFIG_FIELD(<<"Specify the publisher model">>,
-	    publish_model, [publishers, subscribers, open]),
-	?BOOL_CONFIG_FIELD(<<"Purge all items when the relevant publisher goes offline">>,
-	    purge_offline),
-	?ALIST_CONFIG_FIELD(<<"Specify the event message type">>,
-	    notification_type, [headline, normal]),
-	?INTEGER_CONFIG_FIELD(<<"Max payload size in bytes">>,
-	    max_payload_size),
-	?ALIST_CONFIG_FIELD(<<"When to send the last published item">>,
-	    send_last_published_item, [never, on_sub, on_sub_and_presence]),
-	?BOOL_CONFIG_FIELD(<<"Only deliver notifications to available users">>,
-	    presence_based_delivery),
-	?NLIST_CONFIG_FIELD(<<"The collections with which a node is affiliated">>,
-	    collection)].
+    lists:foldl(
+        fun({Key, Field}, Acc) ->
+            OptionSupported =
+            lists:member(Key, ?DEFAULT_NODE_OPTIONS) or
+            lists:any(fun({K, _}) -> K =:= Key end, Options),
+            case OptionSupported of
+                true -> [Field|Acc];
+                false -> Acc
+            end
+        end,
+        [?XFIELD(<<"hidden">>, <<>>, <<"FORM_TYPE">>, (?NS_PUBSUB_NODE_CONFIG))],
+        [{deliver_payloads,
+          ?BOOL_CONFIG_FIELD(<<"Deliver payloads with event notifications">>,
+	        deliver_payloads)},
+         {deliver_notifications,
+	      ?BOOL_CONFIG_FIELD(<<"Deliver event notifications">>,
+	          deliver_notifications)},
+	     {notify_config,
+          ?BOOL_CONFIG_FIELD(<<"Notify subscribers when the node configuration changes">>,
+	          notify_config)},
+	     {notify_delete,
+          ?BOOL_CONFIG_FIELD(<<"Notify subscribers when the node is deleted">>,
+	          notify_delete)},
+	     {notify_retract,
+          ?BOOL_CONFIG_FIELD(<<"Notify subscribers when items are removed from the node">>,
+	          notify_retract)},
+	     {persist_items,
+          ?BOOL_CONFIG_FIELD(<<"Persist items to storage">>,
+	          persist_items)},
+	     {title,
+          ?STRING_CONFIG_FIELD(<<"A friendly name for the node">>,
+	          title)},
+	     {max_items,
+          ?INTEGER_CONFIG_FIELD(<<"Max # of items to persist">>,
+	          max_items)},
+	     {subscribe,
+          ?BOOL_CONFIG_FIELD(<<"Whether to allow subscriptions">>,
+	          subscribe)},
+	     {access_model,
+          ?ALIST_CONFIG_FIELD(<<"Specify the access model">>,
+	          access_model, [open, authorize, presence, roster, whitelist])},
+	     {roster_groups_allowed,
+          ?LISTM_CONFIG_FIELD(<<"Roster groups allowed to subscribe">>,
+	          roster_groups_allowed, Groups)},
+	     {publish_model,
+          ?ALIST_CONFIG_FIELD(<<"Specify the publisher model">>,
+	          publish_model, [publishers, subscribers, open])},
+	     {purge_offline,
+          ?BOOL_CONFIG_FIELD(<<"Purge all items when the relevant publisher goes offline">>,
+	          purge_offline)},
+	     {notification_type,
+          ?ALIST_CONFIG_FIELD(<<"Specify the event message type">>,
+	          notification_type, [headline, normal])},
+	     {max_payload_size,
+          ?INTEGER_CONFIG_FIELD(<<"Max payload size in bytes">>,
+	          max_payload_size)},
+	     {send_last_published_item,
+          ?ALIST_CONFIG_FIELD(<<"When to send the last published item">>,
+	          send_last_published_item, [never, on_sub, on_sub_and_presence])},
+	     {presence_based_delivery,
+          ?BOOL_CONFIG_FIELD(<<"Only deliver notifications to available users">>,
+	          presence_based_delivery)},
+	     {collection,
+          ?NLIST_CONFIG_FIELD(<<"The collections with which a node is affiliated">>,
+	          collection)},
+         {secret,
+          ?STRING_CONFIG_FIELD(<<"A secret token for publisher authorization">>,
+              secret)}]).
 
 %%<p>There are several reasons why the node configuration request might fail:</p>
 %%<ul>
@@ -3801,7 +3855,13 @@ set_configure(Host, Node, From, Els, Lang) ->
     end.
 
 add_opt(Key, Value, Opts) ->
-    [{Key, Value} | lists:keydelete(Key, 1, Opts)].
+    OptionSupported =
+    lists:member(Key, ?DEFAULT_NODE_OPTIONS) or
+    lists:any(fun({K, _}) -> K =:= Key end, Opts),
+    case OptionSupported of
+        true -> [{Key, Value} | lists:keydelete(Key, 1, Opts)];
+        false -> Opts
+    end.
 
 -define(SET_BOOL_XOPT(Opt, Val),
     BoolVal = case Val of
@@ -3885,9 +3945,14 @@ set_xoption(Host, [{<<"pubsub#body_xslt">>, Value} | Opts], NewOpts) ->
 set_xoption(Host, [{<<"pubsub#collection">>, Value} | Opts], NewOpts) ->
     %    NewValue = [string_to_node(V) || V <- Value],
     ?SET_LIST_XOPT(collection, Value);
+
+% FIXME: What is this?
 set_xoption(Host, [{<<"pubsub#node">>, [Value]} | Opts], NewOpts) ->
     %    NewValue = string_to_node(Value),
     ?SET_LIST_XOPT(node, Value);
+
+set_xoption(Host, [{<<"pubsub#secret">>, [Value]} | Opts], NewOpts) ->
+    ?SET_STRING_XOPT(secret, Value);
 set_xoption(Host, [_ | Opts], NewOpts) ->
     set_xoption(Host, Opts, NewOpts).
 
