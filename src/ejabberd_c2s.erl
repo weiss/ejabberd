@@ -2498,8 +2498,11 @@ fsm_next_state(wait_for_resume, #state{mgmt_pending_since = undefined} =
             %% mgmt_timeout has a value > 0 (configured by client or by
             %% resume_timeout config option)
             UnackedStanzas =
-            lists:map(fun({_, Timestamp, El, _}) -> {Timestamp, El} end,
-                      queue:to_list(StateData#state.mgmt_queue)),
+            lists:map(
+                fun({_, Timestamp, El, RerouteFlag}) ->
+                    {Timestamp, El, RerouteFlag}
+                end,
+                queue:to_list(StateData#state.mgmt_queue)),
             ejabberd_hooks:run_fold(mgmt_wait_for_resume_hook,
                                     StateData#state.server,
                                     OldTimeout,
