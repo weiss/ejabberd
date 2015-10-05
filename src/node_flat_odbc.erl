@@ -237,6 +237,7 @@ publish_item(Nidx, Publisher, PublishModel, MaxItems, ItemId, Payload, _PubOpts)
     end.
 
 remove_extra_items(_Nidx, unlimited, ItemIds) ->
+    {result, {ItemIds, []}};
 remove_extra_items(Nidx, MaxItems, ItemIds) ->
     NewItems = lists:sublist(ItemIds, MaxItems),
     OldItems = lists:nthtail(length(NewItems), ItemIds),
