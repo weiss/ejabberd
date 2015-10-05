@@ -115,6 +115,7 @@ commands() ->
 
      #ejabberd_commands{name = num_active_users, tags = [accounts, stats],
 			desc = "Get number of users active in the last days",
+                        policy = admin,
 			module = ?MODULE, function = num_active_users,
 			args = [{host, binary}, {days, integer}],
 			result = {users, integer}},
@@ -173,11 +174,13 @@ commands() ->
 			result = {res, rescode}},
      #ejabberd_commands{name = status_num_host, tags = [session, stats],
 			desc = "Number of logged users with this status in host",
+                        policy = admin,
 			module = ?MODULE, function = status_num,
 			args = [{host, binary}, {status, binary}],
 			result = {users, integer}},
      #ejabberd_commands{name = status_num, tags = [session, stats],
 			desc = "Number of logged users with this status",
+                        policy = admin,
 			module = ?MODULE, function = status_num,
 			args = [{status, binary}],
 			result = {users, integer}},
@@ -361,8 +364,9 @@ commands() ->
 				  }}},
      #ejabberd_commands{name = get_roster, tags = [roster],
 			desc = "Get roster of a local user",
+                        policy = user,
 			module = ?MODULE, function = get_roster,
-			args = [{user, binary}, {host, binary}],
+			args = [],
 			result = {contacts, {list, {contact, {tuple, [
 								      {jid, string},
 								      {nick, string},
@@ -456,6 +460,13 @@ commands() ->
 			args = [{user, binary}, {host, binary}, {group, binary}, {grouphost, binary}],
 			result = {res, rescode}},
 
+     #ejabberd_commands{name = get_offline_count,
+			tags = [offline],
+			desc = "Get the number of unread offline messages",
+                        policy = user,
+			module = mod_offline, function = get_queue_length,
+			args = [],
+			result = {res, integer}},
      #ejabberd_commands{name = send_message, tags = [stanza],
 			desc = "Send a message to a local or remote bare of full JID",
 			module = ?MODULE, function = send_message,
@@ -475,11 +486,13 @@ commands() ->
 
      #ejabberd_commands{name = stats, tags = [stats],
 			desc = "Get statistical value: registeredusers onlineusers onlineusersnode uptimeseconds",
+                        policy = admin,
 			module = ?MODULE, function = stats,
 			args = [{name, binary}],
 			result = {stat, integer}},
      #ejabberd_commands{name = stats_host, tags = [stats],
 			desc = "Get statistical value for this host: registeredusers onlineusers",
+                        policy = admin,
 			module = ?MODULE, function = stats,
 			args = [{name, binary}, {host, binary}],
 			result = {stat, integer}}
@@ -515,12 +528,16 @@ set_password(User, Host, Password) ->
 %% Copied some code from ejabberd_commands.erl
 check_password_hash(User, Host, PasswordHash, HashMethod) ->
     AccountPass = ejabberd_auth:get_password_s(User, Host),
-    AccountPassHash = case HashMethod of
-			  "md5" -> get_md5(AccountPass);
-			  "sha" -> get_sha(AccountPass);
+    AccountPassHash = case {AccountPass, HashMethod} of
+			  {A, _} when is_tuple(A) -> scrammed;
+			  {_, "md5"} -> get_md5(AccountPass);
+			  {_, "sha"} -> get_sha(AccountPass);
 			  _ -> undefined
 		      end,
     case AccountPassHash of
+	scrammed ->
+	    ?ERROR_MSG("Passwords are scrammed, and check_password_hash can not work.", []),
+	    throw(passwords_scrammed_command_cannot_work);
 	undefined -> error;
 	PasswordHash -> ok;
 	_ -> error

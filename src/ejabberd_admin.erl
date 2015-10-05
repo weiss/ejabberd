@@ -29,6 +29,7 @@
 -export([start/0, stop/0,
 	 %% Server
 	 status/0, reopen_log/0,
+	 set_loglevel/1,
 	 stop_kindly/2, send_service_message_all_mucs/2,
 	 registered_vhosts/0,
 	 reload_config/0,
@@ -102,6 +103,11 @@ commands() ->
                                                        {levelatom, atom},
                                                        {leveldesc, string}
                                                       ]}}},
+     #ejabberd_commands{name = set_loglevel, tags = [logs, server],
+			desc = "Set the loglevel (0 to 5)",
+			module = ?MODULE, function = set_loglevel,
+			args = [{loglevel, integer}],
+			result = {logger, atom}},
 
      #ejabberd_commands{name = update_list, tags = [server],
 			desc = "List modified modules that can be updated",
@@ -167,6 +173,10 @@ commands() ->
                         desc = "Export all tables as SQL queries to a file",
                         module = ejd2odbc, function = export,
                         args = [{host, string}, {file, string}], result = {res, rescode}},
+     #ejabberd_commands{name = convert_to_scram, tags = [odbc],
+			desc = "Convert the passwords in 'users' ODBC table to SCRAM",
+			module = ejabberd_auth_odbc, function = convert_to_scram,
+			args = [{host, binary}], result = {res, rescode}},
 
      #ejabberd_commands{name = convert_to_yaml, tags = [config],
                         desc = "Convert the input file from Erlang to YAML format",
@@ -183,11 +193,6 @@ commands() ->
 			module = ?MODULE, function = delete_old_messages,
 			args = [{days, integer}], result = {res, rescode}},
 	 
-     #ejabberd_commands{name = rename_default_nodeplugin, tags = [mnesia],
-			desc = "Update PubSub table from old ejabberd trunk SVN to 2.1.0",
-			module = mod_pubsub, function = rename_default_nodeplugin,
-			args = [], result = {res, rescode}},
-
      #ejabberd_commands{name = export2odbc, tags = [mnesia],
 			desc = "Export virtual host information from Mnesia tables to SQL files",
 			module = ejd2odbc, function = export,
@@ -252,6 +257,12 @@ status() ->
 reopen_log() ->
     ejabberd_hooks:run(reopen_log_hook, []),
     ejabberd_logger:reopen_log().
+
+
+set_loglevel(LogLevel) ->
+    {module, Module} = ejabberd_logger:set(LogLevel),
+    Module.
+
 
 %%%
 %%% Stop Kindly

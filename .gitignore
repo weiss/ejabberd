@@ -41,4 +41,6 @@ XmppAddr.hrl
 /test/*.beam
 /logs/
 /priv/sql
-mix.exs
+/rel/ejabberd
+/_build
+/mnesiadb

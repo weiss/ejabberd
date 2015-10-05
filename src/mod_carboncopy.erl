@@ -34,7 +34,7 @@
 -export([start/2,
          stop/1]).
 
--export([user_send_packet/3, user_receive_packet/4,
+-export([user_send_packet/4, user_receive_packet/5,
 	 iq_handler2/3, iq_handler1/3, remove_connection/4,
 	 is_carbon_copy/1, mod_opt_type/1]).
 
@@ -124,10 +124,10 @@ iq_handler(From, _To,  #iq{type=set, sub_el = #xmlel{name = Operation, children 
 iq_handler(_From, _To, IQ, _CC)->
     IQ#iq{type=error, sub_el = [?ERR_NOT_ALLOWED]}.
 
-user_send_packet(From, To, Packet) ->
+user_send_packet(Packet, _C2SState, From, To) ->
     check_and_forward(From, To, Packet, sent).
 
-user_receive_packet(JID, _From, To, Packet) ->
+user_receive_packet(Packet, _C2SState, JID, _From, To) ->
     check_and_forward(JID, To, Packet, received).
     
 % verifier si le trafic est local
@@ -136,20 +136,21 @@ user_receive_packet(JID, _From, To, Packet) ->
 %    - do not support "private" message mode, and do not modify the original packet in any way
 %    - we also replicate "read" notifications
 check_and_forward(JID, To, Packet, Direction)->
-    case is_chat_or_normal_message(Packet) andalso
+    case is_chat_message(Packet) andalso
 	     xml:get_subtag(Packet, <<"private">>) == false andalso
 		 xml:get_subtag(Packet, <<"no-copy">>) == false of
 	true ->
 	    case is_carbon_copy(Packet) of
 		false ->
-		    send_copies(JID, To, Packet, Direction);
+		    send_copies(JID, To, Packet, Direction),
+		    Packet;
 		true ->
 		    %% stop the hook chain, we don't want mod_logdb to register
 		    %% this message (duplicate)
-		    stop
+		    {stop, Packet}
 	    end;
         _ ->
-	    ok
+	    Packet
     end.
 
 remove_connection(User, Server, Resource, _Status)->
@@ -272,13 +273,16 @@ message_type(#xmlel{attrs = Attrs}) ->
 	false -> <<"normal">>
     end.
 
-is_chat_or_normal_message(#xmlel{name = <<"message">>} = Packet) ->
+is_chat_message(#xmlel{name = <<"message">>} = Packet) ->
     case message_type(Packet) of
 	<<"chat">> -> true;
-	<<"normal">> -> true;
+	<<"normal">> -> has_non_empty_body(Packet);
 	_ -> false
     end;
-is_chat_or_normal_message(_Packet) -> false.
+is_chat_message(_Packet) -> false.
+
+has_non_empty_body(Packet) ->
+    xml:get_subtag_cdata(Packet, <<"body">>) =/= <<"">>.
 
 %% list {resource, cc_version} with carbons enabled for given user and host
 list(User, Server)->

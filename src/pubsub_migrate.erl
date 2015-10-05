@@ -17,10 +17,9 @@
 %%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 %%% General Public License for more details.
 %%%
-%%% You should have received a copy of the GNU General Public License
-%%% along with this program; if not, write to the Free Software
-%%% Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-%%% 02111-1307 USA
+%%% You should have received a copy of the GNU General Public License along
+%%% with this program; if not, write to the Free Software Foundation, Inc.,
+%%% 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 %%%
 %%%----------------------------------------------------------------------
 
@@ -29,7 +28,8 @@
 -include("pubsub.hrl").
 -include("logger.hrl").
 
--export([update_node_database/2, update_state_database/2, update_lastitem_database/2]).
+-export([update_node_database/2, update_state_database/2]).
+-export([update_item_database/2, update_lastitem_database/2]).
 
 update_item_database_binary() ->
     F = fun () ->
@@ -57,6 +57,27 @@ update_item_database_binary() ->
 	    ?INFO_MSG("Pubsub items table has been binarized: ~p", [Result])
     end.
 
+update_item_database(_Host, _ServerHost) ->
+    F = fun() ->
+	    ?INFO_MSG("Migration of old pubsub items...", []),
+	    lists:foreach(fun (Key) ->
+			[Item] = mnesia:read({pubsub_item, Key}),
+			Payload = [xmlelement_to_xmlel(El) || El <- Item#pubsub_item.payload],
+			mnesia:write(Item#pubsub_item{payload=Payload})
+		end,
+		mnesia:all_keys(pubsub_item))
+	end,
+    case mnesia:transaction(F) of
+	{aborted, Reason} ->
+	    ?ERROR_MSG("Failed to migrate old pubsub items to xmlel: ~p", [Reason]);
+	{atomic, Result} ->
+	    ?INFO_MSG("Pubsub items has been migrated: ~p", [Result])
+    end.
+
+xmlelement_to_xmlel({xmlelement, A, B, C}) when is_list(C) ->
+    {xmlel, A, B, [xmlelement_to_xmlel(El) || El <- C]};
+xmlelement_to_xmlel(El) ->
+    El.
 
 update_node_database_binary() ->
     F = fun () ->

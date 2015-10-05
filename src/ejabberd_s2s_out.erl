@@ -197,13 +197,18 @@ init([From, Server, Type]) ->
                    undefined -> TLSOpts2;
                    ProtocolOpts -> [{protocol_options, ProtocolOpts} | TLSOpts2]
                end,
+    TLSOpts4 = case ejabberd_config:get_option(
+                      s2s_dhfile, fun iolist_to_binary/1) of
+                   undefined -> TLSOpts3;
+                   DHFile -> [{dhfile, DHFile} | TLSOpts3]
+               end,
     TLSOpts = case ejabberd_config:get_option(
                      {s2s_tls_compression, From},
                      fun(true) -> true;
                         (false) -> false
                      end, true) of
-                  false -> [compression_none | TLSOpts3];
-                  true -> TLSOpts3
+                  false -> [compression_none | TLSOpts4];
+                  true -> TLSOpts4
               end,
     {New, Verify} = case Type of
 		      {new, Key} -> {Key, false};
@@ -230,7 +235,7 @@ open_socket(init, StateData) ->
 	   [{StateData#state.myname, StateData#state.server,
 	     StateData#state.new, StateData#state.verify}]),
     AddrList = case
-		 idna:domain_utf8_to_ascii(StateData#state.server)
+		 ejabberd_idna:domain_utf8_to_ascii(StateData#state.server)
 		   of
 		 false -> [];
 		 ASCIIAddr -> get_addr_port(ASCIIAddr)
@@ -1376,6 +1381,7 @@ opt_type(outgoing_s2s_timeout) ->
     end;
 opt_type(s2s_certfile) -> fun iolist_to_binary/1;
 opt_type(s2s_ciphers) -> fun iolist_to_binary/1;
+opt_type(s2s_dhfile) -> fun iolist_to_binary/1;
 opt_type(s2s_dns_retries) ->
     fun (I) when is_integer(I), I >= 0 -> I end;
 opt_type(s2s_dns_timeout) ->
@@ -1403,6 +1409,6 @@ opt_type(s2s_use_starttls) ->
 opt_type(_) ->
     [domain_certfile, max_fsm_queue, outgoing_s2s_families,
      outgoing_s2s_port, outgoing_s2s_timeout, s2s_certfile,
-     s2s_ciphers, s2s_dns_retries, s2s_dns_timeout,
+     s2s_ciphers, s2s_dhfile, s2s_dns_retries, s2s_dns_timeout,
      s2s_max_retry_delay, s2s_protocol_options,
      s2s_tls_compression, s2s_use_starttls].

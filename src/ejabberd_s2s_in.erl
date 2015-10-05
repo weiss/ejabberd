@@ -185,9 +185,14 @@ init([{SockMod, Socket}, Opts]) ->
                    undefined -> TLSOpts2;
                    ProtocolOpts -> [{protocol_options, ProtocolOpts} | TLSOpts2]
                end,
+    TLSOpts4 = case ejabberd_config:get_option(
+                      s2s_dhfile, fun iolist_to_binary/1) of
+                   undefined -> TLSOpts3;
+                   DHFile -> [{dhfile, DHFile} | TLSOpts3]
+               end,
     TLSOpts = case proplists:get_bool(tls_compression, Opts) of
-                  false -> [compression_none | TLSOpts3];
-                  true -> TLSOpts3
+                  false -> [compression_none | TLSOpts4];
+                  true -> TLSOpts4
               end,
     Timer = erlang:start_timer(?S2STIMEOUT, self(), []),
     {ok, wait_for_stream,
@@ -717,6 +722,7 @@ opt_type(max_fsm_queue) ->
     fun (I) when is_integer(I), I > 0 -> I end;
 opt_type(s2s_certfile) -> fun iolist_to_binary/1;
 opt_type(s2s_ciphers) -> fun iolist_to_binary/1;
+opt_type(s2s_dhfile) -> fun iolist_to_binary/1;
 opt_type(s2s_protocol_options) ->
     fun (Options) ->
 	    [_ | O] = lists:foldl(fun (X, Acc) -> X ++ Acc end, [],
@@ -737,5 +743,5 @@ opt_type(s2s_use_starttls) ->
     end;
 opt_type(_) ->
     [domain_certfile, max_fsm_queue, s2s_certfile,
-     s2s_ciphers, s2s_protocol_options, s2s_tls_compression,
-     s2s_use_starttls].
+     s2s_ciphers, s2s_dhfile, s2s_protocol_options,
+     s2s_tls_compression, s2s_use_starttls].

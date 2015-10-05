@@ -49,6 +49,7 @@
 -author('christophe.romain@process-one.net').
 -protocol({xep, 60, '1.13-1'}).
 -protocol({xep, 163, '1.2'}).
+-protocol({xep, 248, '0.2'}).
 
 -include("ejabberd.hrl").
 -include("logger.hrl").
@@ -84,7 +85,7 @@
          body_xslt]).
 
 %% exports for hooks
--export([presence_probe/3, caps_update/3,
+-export([presence_probe/3, caps_add/3, caps_update/3,
     in_subscription/6, out_subscription/4,
     on_user_offline/3, remove_user/2,
     disco_local_identity/5, disco_local_features/5,
@@ -317,6 +318,8 @@ init([ServerHost, Opts]) ->
 	?MODULE, remove_user, 50),
     case lists:member(?PEPNODE, Plugins) of
 	true ->
+	    ejabberd_hooks:add(caps_add, ServerHost,
+		?MODULE, caps_add, 80),
 	    ejabberd_hooks:add(caps_update, ServerHost,
 		?MODULE, caps_update, 80),
 	    ejabberd_hooks:add(disco_sm_identity, ServerHost,
@@ -336,7 +339,6 @@ init([ServerHost, Opts]) ->
     pubsub_migrate:update_node_database(Host, ServerHost),
     pubsub_migrate:update_state_database(Host, ServerHost),
     pubsub_migrate:update_lastitem_database(Host, ServerHost),
-    init_nodes(Host, ServerHost, NodeTree, Plugins),
     {_, State} = init_send_loop(ServerHost),
     {ok, State}.
 
@@ -409,14 +411,6 @@ terminate_plugins(Host, ServerHost, Plugins, TreePlugin) ->
 	Plugins),
     TreePlugin:terminate(Host, ServerHost),
     ok.
-
-init_nodes(Host, ServerHost, _NodeTree, Plugins) ->
-    case lists:member(<<"hometree">>, Plugins) of
-	true ->
-	    create_node(Host, ServerHost, <<"/home">>, service_jid(Host), <<"hometree">>),
-	    create_node(Host, ServerHost, <<"/home/", ServerHost/binary>>, service_jid(Host), <<"hometree">>);
-	false -> ok
-    end.
 
 send_loop(State) ->
     receive
@@ -707,11 +701,23 @@ disco_items(Host, Node, From) ->
 %% presence hooks handling functions
 %%
 
-caps_update(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Features)
+caps_add(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Features)
 	when Host =/= S ->
+    %% When a remote contact goes online while the local user is offline, the
+    %% remote contact won't receive last items from the local user even if
+    %% ignore_pep_from_offline is set to false. To work around this issue a bit,
+    %% we'll also send the last items to remote contacts when the local user
+    %% connects. That's the reason to use the caps_add hook instead of the
+    %% presence_probe_hook for remote contacts: The latter is only called when a
+    %% contact becomes available; the former is also executed when the local
+    %% user goes online (because that triggers the contact to send a presence
+    %% packet with CAPS).
     presence(Host, {presence, U, S, [R], JID});
-caps_update(_From, _To, _Feature) ->
+caps_add(_From, _To, _Feature) ->
     ok.
+
+caps_update(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = Host} = JID, _Features) ->
+    presence(Host, {presence, U, S, [R], JID}).
 
 presence_probe(#jid{luser = U, lserver = S, lresource = R} = JID, JID, Pid) ->
     presence(S, {presence, JID, Pid}),
@@ -724,7 +730,7 @@ presence_probe(#jid{luser = U, lserver = S, lresource = R}, #jid{lserver = S} = 
     presence(S, {presence, U, S, [R], JID});
 presence_probe(_Host, _JID, _Pid) ->
     %% ignore presence_probe from remote contacts,
-    %% those are handled via caps_update
+    %% those are handled via caps_add
     ok.
 
 presence(ServerHost, Presence) ->
@@ -896,6 +902,8 @@ terminate(_Reason,
     ejabberd_router:unregister_route(Host),
     case lists:member(?PEPNODE, Plugins) of
 	true ->
+	    ejabberd_hooks:delete(caps_add, ServerHost,
+		?MODULE, caps_add, 80),
 	    ejabberd_hooks:delete(caps_update, ServerHost,
 		?MODULE, caps_update, 80),
 	    ejabberd_hooks:delete(disco_sm_identity, ServerHost,
@@ -3671,9 +3679,9 @@ max_items(Host, Options) ->
     case get_option(Options, persist_items) of
 	true ->
 	    case get_option(Options, max_items) of
-		false -> unlimited;
-		Result when Result < 0 -> 0;
-		Result -> Result
+		I when is_integer(I), I < 0 -> 0;
+		I when is_integer(I) -> I;
+		_ -> ?MAXITEMS
 	    end;
 	false ->
 	    case get_option(Options, send_last_published_item) of
