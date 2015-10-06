@@ -43,6 +43,7 @@
 -define(NS_HINTS, <<"urn:xmpp:hints">>).
 -define(NS_EXPIRE, <<"jabber:x:expire">>).
 -define(NS_EVENT, <<"jabber:x:event">>).
+-define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
 -define(NS_CHATSTATES,
 	<<"http://jabber.org/protocol/chatstates">>).
 -define(NS_XCONFERENCE, <<"jabber:x:conference">>).
