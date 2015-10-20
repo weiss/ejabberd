@@ -74,7 +74,6 @@ bind_tcp_port(PortIP, Module, RawOpts) ->
 		udp -> ok;
 		_ ->
 		    ListenSocket = listen_tcp(PortIP, Module, SockOpts, Port, IPS),
-		    ets:insert(listen_sockets, {PortIP, ListenSocket}),
                     ok
 	    end
     catch
@@ -187,7 +186,6 @@ listen_tcp(PortIP, Module, SockOpts, Port, IPS) ->
     case ets:lookup(listen_sockets, PortIP) of
 	[{PortIP, ListenSocket}] ->
 	    ?INFO_MSG("Reusing listening port for ~p", [PortIP]),
-	    ets:delete(listen_sockets, PortIP),
 	    ListenSocket;
 	_ ->
 	    Res = gen_tcp:listen(Port, [binary,
@@ -201,6 +199,7 @@ listen_tcp(PortIP, Module, SockOpts, Port, IPS) ->
 					SockOpts]),
 	    case Res of
 		{ok, ListenSocket} ->
+		    ets:insert(listen_sockets, {PortIP, ListenSocket}),
 		    ListenSocket;
 		{error, Reason} ->
 		    socket_error(Reason, PortIP, Module, SockOpts, Port, IPS)
@@ -426,6 +425,13 @@ stop_listeners() ->
 %%      IPS = string()
 %%      Module = atom()
 stop_listener(PortIP, _Module) ->
+    case ets:lookup(listen_sockets, PortIP) of
+	[{PortIP, ListenSocket}] ->
+	    gen_tcp:close(ListenSocket),
+	    ets:delete(listen_sockets, PortIP);
+	_ ->
+	    ok
+    end,
     supervisor:terminate_child(ejabberd_listeners, PortIP),
     supervisor:delete_child(ejabberd_listeners, PortIP).
 
