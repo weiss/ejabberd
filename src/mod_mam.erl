@@ -844,8 +844,7 @@ select_and_send(LServer, From, To, Start, End, With, RSM, IQ, MsgType) ->
 select_and_send(LServer, From, To, Start, End, With, RSM, IQ, MsgType, DBType) ->
     {Msgs, IsComplete, Count} = select_and_start(LServer, From, To, Start, End,
 						 With, RSM, MsgType, DBType),
-    SortedMsgs = lists:keysort(2, Msgs),
-    send(From, To, SortedMsgs, RSM, Count, IsComplete, IQ).
+    send(From, To, Msgs, RSM, Count, IsComplete, IQ).
 
 select_and_start(LServer, From, To, Start, End, With, RSM, MsgType, DBType) ->
     case MsgType of
@@ -868,7 +867,7 @@ select(_LServer, JidRequestor, Start, End, _With, RSM,
 		  case match_interval(Now, Start, End) and
 		      match_rsm(Now, RSM) of
 		      true ->
-			  {[{jlib:integer_to_binary(TS), TS,
+			  {[{jlib:integer_to_binary(TS),
 			     msg_to_el(#archive_msg{
 					  type = groupchat,
 					  timestamp = Now,
@@ -907,9 +906,7 @@ select(_LServer, #jid{luser = LUser, lserver = LServer} = JidRequestor,
 	    end,
     {lists:map(
        fun(Msg) ->
-	       {Msg#archive_msg.id,
-		jlib:binary_to_integer(Msg#archive_msg.id),
-		msg_to_el(Msg, MsgType, JidRequestor)}
+	       {Msg#archive_msg.id, msg_to_el(Msg, MsgType, JidRequestor)}
        end, FilteredMsgs), IsComplete, Count};
 select(LServer, #jid{luser = LUser} = JidRequestor,
        Start, End, With, RSM, MsgType, {odbc, Host}) ->
@@ -953,14 +950,13 @@ select(LServer, #jid{luser = LUser} = JidRequestor,
 				   null -> chat;
 				   _ -> jlib:binary_to_atom(Kind)
 			       end,
-			   [{TS, jlib:binary_to_integer(TS),
-			     msg_to_el(#archive_msg{timestamp = Now,
-						    packet = El,
-						    type = T,
-						    nick = Nick,
-						    peer = PeerJid},
-				       MsgType,
-				       JidRequestor)}]
+			   [{TS, msg_to_el(#archive_msg{timestamp = Now,
+							packet = El,
+							type = T,
+							nick = Nick,
+							peer = PeerJid},
+					   MsgType,
+					   JidRequestor)}]
 		       catch _:Err ->
 			       ?ERROR_MSG("failed to parse data from SQL: ~p. "
 					  "The data was: "
@@ -1048,7 +1044,7 @@ send(From, To, Msgs, RSM, Count, IsComplete, #iq{sub_el = SubEl} = IQ) ->
 			   [{<<"complete">>, jlib:atom_to_binary(IsComplete)}]
 		   end,
     Els = lists:map(
-	    fun({ID, _IDInt, El}) ->
+	    fun({ID, El}) ->
 		    #xmlel{name = <<"message">>,
 			   children = [#xmlel{name = <<"result">>,
 					      attrs = [{<<"xmlns">>, NS},
@@ -1082,8 +1078,8 @@ make_rsm_out([], _, Count, Attrs, NS) ->
 	  end,
     [#xmlel{name = Tag, attrs = [{<<"xmlns">>, NS}|Attrs],
 	    children = jlib:rsm_encode(#rsm_out{count = Count})}];
-make_rsm_out([{FirstID, _, _}|_] = Msgs, _, Count, Attrs, NS) ->
-    {LastID, _, _} = lists:last(Msgs),
+make_rsm_out([{FirstID, _}|_] = Msgs, _, Count, Attrs, NS) ->
+    {LastID, _} = lists:last(Msgs),
     Tag = if NS == ?NS_MAM_TMP -> <<"query">>;
 	     true -> <<"fin">>
 	  end,
