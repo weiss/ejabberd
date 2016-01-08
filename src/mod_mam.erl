@@ -898,7 +898,8 @@ select(_LServer, #jid{luser = LUser, lserver = LServer} = JidRequestor,
 			      false}
 		     end,
     Msgs = mnesia:dirty_select(archive_msg, MS),
-    {FilteredMsgs, IsComplete} = filter_by_max(Msgs, RSM),
+    SortedMsgs = lists:keysort(#archive_msg.timestamp, Msgs),
+    {FilteredMsgs, IsComplete} = filter_by_max(SortedMsgs, RSM),
     Count = if not IsSubset ->
 		    length(Msgs);
 	       true ->
