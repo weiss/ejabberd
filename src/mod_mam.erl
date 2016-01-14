@@ -49,11 +49,9 @@
 -define(MAX_PAGE_SIZE, 250).
 
 -define(BIN_GREATER_THAN(A, B),
-	((A > B andalso byte_size(A) == byte_size(B))
-	 orelse byte_size(A) > byte_size(B))).
+	((A > B andalso size(A) == size(B)) orelse size(A) > size(B))).
 -define(BIN_LESS_THAN(A, B),
-	((A < B andalso byte_size(A) == byte_size(B))
-	 orelse byte_size(A) < byte_size(B))).
+	((A < B andalso size(A) == size(B)) orelse size(A) < size(B))).
 
 -record(archive_msg,
 	{us = {<<"">>, <<"">>}                :: {binary(), binary()} | '$2',
@@ -959,24 +957,30 @@ select(_LServer, JidRequestor, JidArchive, Start, End, _With, RSM,
 		  end
 	  end, 0, queue:to_list(Q)),
     Msgs = lists:flatten(Msgs0),
-    case RSM of
-	#rsm_in{max = Max, direction = before} ->
-	    {NewMsgs, IsComplete} = filter_by_max(lists:reverse(Msgs), Max),
-	    {NewMsgs, IsComplete, L};
-	#rsm_in{max = Max} ->
-	    {NewMsgs, IsComplete} = filter_by_max(Msgs, Max),
-	    {NewMsgs, IsComplete, L};
-	_ ->
-	    {Msgs, true, L}
-    end;
+    {NewMsgs, IsComplete} = filter_by_max(Msgs, RSM),
+    {NewMsgs, IsComplete, L};
 select(_LServer, JidRequestor,
        #jid{luser = LUser, lserver = LServer} = JidArchive,
        Start, End, With, RSM, MsgType, mnesia) ->
-    MS = make_matchspec(LUser, LServer, Start, End, With),
+    {MS, IsSubset} = case RSM of
+			 #rsm_in{direction = Direction, id = ID}
+			     when Direction == before orelse Direction == aft,
+				  ID /= <<>> ->
+			     {make_matchspec(LUser, LServer, Start, End, With,
+					     Direction, ID),
+			      true};
+			 _ ->
+			     {make_matchspec(LUser, LServer, Start, End, With),
+			      false}
+		     end,
     Msgs = mnesia:dirty_select(archive_msg, MS),
     SortedMsgs = lists:keysort(#archive_msg.timestamp, Msgs),
-    {FilteredMsgs, IsComplete} = filter_by_rsm(SortedMsgs, RSM),
-    Count = length(Msgs),
+    {FilteredMsgs, IsComplete} = filter_by_max(SortedMsgs, RSM),
+    Count = if not IsSubset ->
+		    length(Msgs);
+	       true ->
+		    undefined
+	    end,
     {lists:map(
        fun(Msg) ->
 	       {Msg#archive_msg.id,
@@ -1176,39 +1180,6 @@ make_rsm_out([{FirstID, _, _}|_] = Msgs, _, Count, Attrs, NS) ->
 			 #rsm_out{first = FirstID, count = Count,
 				  last = LastID})}].
 
-filter_by_rsm(Msgs, none) ->
-    {Msgs, true};
-filter_by_rsm(_Msgs, #rsm_in{max = Max}) when Max < 0 ->
-    {[], true};
-filter_by_rsm(Msgs, #rsm_in{max = Max, direction = Direction, id = ID}) ->
-    NewMsgs = case Direction of
-		  aft when ID /= <<"">> ->
-		      lists:filter(
-			fun(#archive_msg{id = I}) ->
-				?BIN_GREATER_THAN(I, ID)
-			end, Msgs);
-		  before when ID /= <<"">> ->
-		      lists:foldl(
-			fun(#archive_msg{id = I} = Msg, Acc)
-				when ?BIN_LESS_THAN(I, ID) ->
-				[Msg|Acc];
-			   (_, Acc) ->
-				Acc
-			end, [], Msgs);
-		  before when ID == <<"">> ->
-		      lists:reverse(Msgs);
-		  _ ->
-		      Msgs
-	      end,
-    filter_by_max(NewMsgs, Max).
-
-filter_by_max(Msgs, undefined) ->
-    {Msgs, true};
-filter_by_max(Msgs, Len) when is_integer(Len), Len >= 0 ->
-    {lists:sublist(Msgs, Len), length(Msgs) =< Len};
-filter_by_max(_Msgs, _Junk) ->
-    {[], true}.
-
 limit_max(RSM, ?NS_MAM_TMP) ->
     RSM; % XEP-0313 v0.2 doesn't require clients to support RSM.
 limit_max(#rsm_in{max = Max} = RSM, _NS) when not is_integer(Max) ->
@@ -1217,6 +1188,25 @@ limit_max(#rsm_in{max = Max} = RSM, _NS) when Max > ?MAX_PAGE_SIZE ->
     RSM#rsm_in{max = ?MAX_PAGE_SIZE};
 limit_max(RSM, _NS) ->
     RSM.
+
+filter_by_max(Msgs, none) ->
+    {Msgs, true};
+filter_by_max(_Msgs, #rsm_in{max = Max}) when Max < 0 ->
+    {[], true};
+filter_by_max(Msgs, #rsm_in{max = Max, direction = Direction}) ->
+    Msgs1 = case Direction of
+		before ->
+		    lists:reverse(Msgs);
+		_ ->
+		    Msgs
+	    end,
+    if is_integer(Max), Max >= 0 ->
+	    {lists:sublist(Msgs1, Max), length(Msgs1) =< Max};
+       Max == undefined ->
+	    {Msgs1, true};
+       Max == error ->
+	    {[], true}
+    end.
 
 match_interval(Now, Start, End) ->
     (Now >= Start) and (Now =< End).
@@ -1229,6 +1219,83 @@ match_rsm(Now, #rsm_in{id = ID, direction = before}) when ID /= <<"">> ->
     Now < Now1;
 match_rsm(_Now, _) ->
     true.
+
+make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With,
+	       before, BeforeID) ->
+    ets:fun2ms(
+      fun(#archive_msg{id = ID,
+		       timestamp = TS,
+		       us = US,
+		       bare_peer = BPeer} = Msg)
+	    when ?BIN_LESS_THAN(ID, BeforeID),
+		 Start =< TS, End >= TS,
+		 US == {LUser, LServer},
+		 BPeer == With ->
+	      Msg
+      end);
+make_matchspec(LUser, LServer, Start, End, {_, _, _} = With,
+	       before, BeforeID) ->
+    ets:fun2ms(
+      fun(#archive_msg{id = ID,
+		       timestamp = TS,
+		       us = US,
+		       peer = Peer} = Msg)
+	    when ?BIN_LESS_THAN(ID, BeforeID),
+		 Start =< TS, End >= TS,
+		 US == {LUser, LServer},
+		 Peer == With ->
+	      Msg
+      end);
+make_matchspec(LUser, LServer, Start, End, none,
+	       before, BeforeID) ->
+    ets:fun2ms(
+      fun(#archive_msg{id = ID,
+		       timestamp = TS,
+		       us = US,
+		       peer = Peer} = Msg)
+	    when ?BIN_LESS_THAN(ID, BeforeID),
+		 Start =< TS, End >= TS,
+		 US == {LUser, LServer} ->
+	      Msg
+      end);
+make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With,
+	       aft, AfterID) ->
+    ets:fun2ms(
+      fun(#archive_msg{id = ID,
+		       timestamp = TS,
+		       us = US,
+		       bare_peer = BPeer} = Msg)
+	    when ?BIN_GREATER_THAN(ID, AfterID),
+		 Start =< TS, End >= TS,
+		 US == {LUser, LServer},
+		 BPeer == With ->
+	      Msg
+      end);
+make_matchspec(LUser, LServer, Start, End, {_, _, _} = With,
+	       aft, AfterID) ->
+    ets:fun2ms(
+      fun(#archive_msg{id = ID,
+		       timestamp = TS,
+		       us = US,
+		       peer = Peer} = Msg)
+	    when ?BIN_GREATER_THAN(ID, AfterID),
+		 Start =< TS, End >= TS,
+		 US == {LUser, LServer},
+		 Peer == With ->
+	      Msg
+      end);
+make_matchspec(LUser, LServer, Start, End, none,
+	       aft, AfterID) ->
+    ets:fun2ms(
+      fun(#archive_msg{id = ID,
+		       timestamp = TS,
+		       us = US,
+		       peer = Peer} = Msg)
+	    when ?BIN_GREATER_THAN(ID, AfterID),
+		 Start =< TS, End >= TS,
+		 US == {LUser, LServer} ->
+	      Msg
+      end).
 
 make_matchspec(LUser, LServer, Start, End, {_, _, <<>>} = With) ->
     ets:fun2ms(

@@ -1926,14 +1926,12 @@ mam_query_rsm(Config, NS) ->
 		       sub_els = [#mam_query{
 				     xmlns = NS,
 				     rsm = #rsm_set{
-					      count = 5,
 					      first = #rsm_first{data = First}}}]});
        true ->
 	    ?recv1(#message{
 		      sub_els = [#mam_fin{
 				    complete = false,
 				    rsm = #rsm_set{
-					      count = 10,
 					      first = #rsm_first{data = First}}}]})
     end,
     %% Paging back. Should receive 3 elements: 1, 2, 3.
@@ -1960,11 +1958,10 @@ mam_query_rsm(Config, NS) ->
       end, lists:seq(1, 3)),
     if NS == ?NS_MAM_TMP ->
 	    ?recv1(#iq{type = result, id = I3,
-		       sub_els = [#mam_query{xmlns = NS, rsm = #rsm_set{count = 5}}]});
+		       sub_els = [#mam_query{xmlns = NS}]});
        true ->
 	    ?recv1(#message{
-		      sub_els = [#mam_fin{complete = true,
-					  rsm = #rsm_set{count = 10}}]})
+		      sub_els = [#mam_fin{complete = true}]})
     end,
     %% Getting the item count. Should be 5 (or 10).
     I4 = send(Config,
