@@ -36,6 +36,7 @@
 
 -include("pubsub.hrl").
 -include("jlib.hrl").
+-include("logger.hrl").
 
 -export([init/3, terminate/2, options/0, set_node/1,
     get_node/3, get_node/2, get_node/1, get_nodes/2,
@@ -64,7 +65,7 @@ get_node(Host, Node) ->
 
 get_node(Nidx) ->
     {Host, Node} = nodeid(Nidx),
-    node_record(Host, Node, Nidx).
+    node_record(mod_pubsub:serverhost(Host), Node, Nidx).
 
 get_nodes(Host, _From) ->
     get_nodes(Host).

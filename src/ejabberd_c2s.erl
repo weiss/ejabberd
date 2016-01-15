@@ -1680,15 +1680,12 @@ handle_info(system_shutdown, StateName, StateData) ->
     case StateName of
       wait_for_stream ->
 	  send_header(StateData, ?MYNAME, <<"1.0">>, <<"en">>),
-	  send_element(StateData, ?SERR_SYSTEM_SHUTDOWN),
-	  send_trailer(StateData),
-	  ok;
+      ok;
       _ ->
-	  send_element(StateData, ?SERR_SYSTEM_SHUTDOWN),
-	  send_trailer(StateData),
 	  ok
     end,
-    {stop, normal, StateData};
+    XmlElement = ?SERR_SYSTEM_SHUTDOWN,
+    handle_info({kick, system_shutdown, XmlElement}, StateName, StateData);
 handle_info({route_xmlstreamelement, El}, _StateName, StateData) ->
     {next_state, NStateName, NStateData, _Timeout} =
 	session_established({xmlstreamelement, El}, StateData),
@@ -1839,7 +1836,7 @@ send_text(StateData, Text) when StateData#state.mgmt_state == active ->
     case catch (StateData#state.sockmod):send(StateData#state.socket, Text) of
       {'EXIT', _} ->
 	  (StateData#state.sockmod):close(StateData#state.socket),
-	  {error, closed};
+	  error;
       _ ->
 	  ok
     end;
@@ -1860,7 +1857,12 @@ send_stanza(StateData, Stanza) when StateData#state.csi_state == inactive ->
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == pending ->
     mgmt_queue_add(StateData, Stanza);
 send_stanza(StateData, Stanza) when StateData#state.mgmt_state == active ->
-    NewStateData = send_stanza_and_ack_req(StateData, Stanza),
+    NewStateData = case send_stanza_and_ack_req(StateData, Stanza) of
+		     ok ->
+			 StateData;
+		     error ->
+			 StateData#state{mgmt_state = pending}
+		   end,
     mgmt_queue_add(NewStateData, Stanza);
 send_stanza(StateData, Stanza) ->
     send_element(StateData, Stanza),
@@ -2441,9 +2443,26 @@ fsm_next_state(wait_for_resume, #state{mgmt_pending_since = undefined} =
 	       StateData) ->
     ?INFO_MSG("Waiting for resumption of stream for ~s",
 	      [jid:to_string(StateData#state.jid)]),
+    Timeout =
+    case StateData#state.mgmt_timeout of
+        OldTimeout when OldTimeout > 0 ->
+            %% mgmt_wait_for_resume_hook allows adjusting the resumption
+            %% timeout. It's run if the client enabled stream resumption and
+            %% mgmt_timeout has a value > 0 (configured by client or by
+            %% resume_timeout config option)
+            UnackedStanzas =
+            lists:map(fun({_, Timestamp, El, _}) -> {Timestamp, El} end,
+                      queue:to_list(StateData#state.mgmt_queue)),
+            ejabberd_hooks:run_fold(mgmt_wait_for_resume_hook,
+                                    StateData#state.server,
+                                    OldTimeout,
+                                    [StateData#state.jid, UnackedStanzas]);
+        T -> T
+    end,
     {next_state, wait_for_resume,
-     StateData#state{mgmt_state = pending, mgmt_pending_since = os:timestamp()},
-     StateData#state.mgmt_timeout};
+     StateData#state{mgmt_state = pending, mgmt_pending_since = os:timestamp(),
+                     mgmt_timeout = Timeout},
+     Timeout};
 fsm_next_state(wait_for_resume, StateData) ->
     Diff = timer:now_diff(os:timestamp(), StateData#state.mgmt_pending_since),
     Timeout = max(StateData#state.mgmt_timeout - Diff div 1000, 1),
@@ -2726,7 +2745,7 @@ handle_resume(StateData, Attrs) ->
 				       {<<"h">>, AttrH},
 				       {<<"previd">>, AttrId}],
 			      children = []}),
-	  SendFun = fun(_F, _T, El, Time) ->
+	  SendFun = fun(_F, _T, El, Time, _RerouteFlag) ->
 			    NewEl = add_resent_delay_info(NewState, El, Time),
 			    send_element(NewState, NewEl)
 		    end,
@@ -2737,6 +2756,8 @@ handle_resume(StateData, Attrs) ->
 			      children = []}),
 	  FlushedState = csi_queue_flush(NewState),
 	  NewStateData = FlushedState#state{csi_state = active},
+      ejabberd_hooks:run(mgmt_resume_session_hook, StateData#state.server,
+                         [NewStateData#state.jid]),
 	  ?INFO_MSG("Resumed session for ~s",
 		    [jid:to_string(NewStateData#state.jid)]),
 	  {ok, NewStateData};
@@ -2774,29 +2795,34 @@ send_stanza_and_ack_req(StateData, Stanza) ->
     AckReq = #xmlel{name = <<"r">>,
 		    attrs = [{<<"xmlns">>, StateData#state.mgmt_xmlns}],
 		    children = []},
-    case send_element(StateData, Stanza) == ok andalso
-	 send_element(StateData, AckReq) == ok of
-      true ->
-	  StateData;
-      false ->
-	  StateData#state{mgmt_state = pending}
+    case send_element(StateData, Stanza) of
+      ok ->
+	  send_element(StateData, AckReq);
+      error ->
+	  error
     end.
 
 mgmt_queue_add(StateData, El) ->
-    NewNum = case StateData#state.mgmt_stanzas_out of
+   NewNum = case StateData#state.mgmt_stanzas_out of
 	       4294967295 ->
 		   0;
 	       Num ->
 		   Num + 1
 	     end,
-    NewQueue = queue:in({NewNum, p1_time_compat:timestamp(), El}, StateData#state.mgmt_queue),
+    %% RerouteFlag may be true|false|false_on_system_shutdown
+    RerouteFlag =
+    ejabberd_hooks:run_fold(mgmt_queue_add_hook, StateData#state.server,
+                            true, [StateData#state.jid, El]),
+    NewQueue =
+    queue:in({NewNum, p1_time_compat:timestamp(), El, RerouteFlag}, StateData#state.mgmt_queue),
     NewState = StateData#state{mgmt_queue = NewQueue,
 			       mgmt_stanzas_out = NewNum},
     check_queue_length(NewState).
 
 mgmt_queue_drop(StateData, NumHandled) ->
-    NewQueue = jlib:queue_drop_while(fun({N, _T, _E}) -> N =< NumHandled end,
-				     StateData#state.mgmt_queue),
+    NewQueue =
+    jlib:queue_drop_while(fun({N, _T, _E, _R}) -> N =< NumHandled end,
+				          StateData#state.mgmt_queue),
     StateData#state{mgmt_queue = NewQueue}.
 
 check_queue_length(#state{mgmt_max_queue = Limit} = StateData)
@@ -2823,12 +2849,12 @@ handle_unacked_stanzas(StateData, F)
 	  ?INFO_MSG("~B stanzas were not acknowledged by ~s",
 		    [N, jid:to_string(StateData#state.jid)]),
 	  lists:foreach(
-	    fun({_, Time, #xmlel{attrs = Attrs} = El}) ->
+	    fun({_, Time, #xmlel{attrs = Attrs} = El, RerouteFlag}) ->
 		    From_s = xml:get_attr_s(<<"from">>, Attrs),
 		    From = jid:from_string(From_s),
 		    To_s = xml:get_attr_s(<<"to">>, Attrs),
 		    To = jid:from_string(To_s),
-		    F(From, To, El, Time)
+		    F(From, To, El, Time, RerouteFlag)
 	    end, queue:to_list(Queue))
     end;
 handle_unacked_stanzas(_StateData, _F) ->
@@ -2847,25 +2873,34 @@ handle_unacked_stanzas(StateData)
 	end,
     ReRoute = case ResendOnTimeout of
 		true ->
-		    fun(From, To, El, Time) ->
-			    NewEl = add_resent_delay_info(StateData, El, Time),
-			    ejabberd_router:route(From, To, NewEl)
+            Shutdown = StateData#state.authenticated =:= system_shutdown,
+		    fun(From, To, El, Time, RerouteFlag) ->
+                RerouteStanza =
+                (RerouteFlag =:= true) or
+                ((RerouteFlag =:= false_on_system_shutdown) and not Shutdown),
+                case RerouteStanza of
+                    true ->
+			            NewEl = add_resent_delay_info(StateData, El, Time),
+			            ejabberd_router:route(From, To, NewEl);
+                    false ->
+                        ok
+                end
 		    end;
 		false ->
-		    fun(From, To, El, _Time) ->
+		    fun(From, To, El, _Time, _RerouteFlag) ->
 			    Err =
 				jlib:make_error_reply(El,
 						      ?ERR_SERVICE_UNAVAILABLE),
 			    ejabberd_router:route(To, From, Err)
 		    end
 	      end,
-    F = fun(From, _To, #xmlel{name = <<"presence">>}, _Time) ->
+    F = fun(From, _To, #xmlel{name = <<"presence">>}, _Time, _RerouteFlag) ->
 		?DEBUG("Dropping presence stanza from ~s",
 		       [jid:to_string(From)]);
-	   (From, To, #xmlel{name = <<"iq">>} = El, _Time) ->
+	   (From, To, #xmlel{name = <<"iq">>} = El, _Time, _RerouteFlag) ->
 		Err = jlib:make_error_reply(El, ?ERR_SERVICE_UNAVAILABLE),
 		ejabberd_router:route(To, From, Err);
-	   (From, To, El, Time) ->
+	   (From, To, El, Time, RerouteFlag) ->
 		%% We'll drop the stanza if it was <forwarded/> by some
 		%% encapsulating protocol as per XEP-0297.  One such protocol is
 		%% XEP-0280, which says: "When a receiving server attempts to
@@ -2886,7 +2921,7 @@ handle_unacked_stanzas(StateData)
 			true ->
 			    ok;
 			false ->
-			    ReRoute(From, To, El, Time)
+			    ReRoute(From, To, El, Time, RerouteFlag)
 		      end
 		end
 	end,
