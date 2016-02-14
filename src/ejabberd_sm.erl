@@ -63,7 +63,8 @@
 	 get_user_ip/3,
 	 get_max_user_sessions/2,
 	 get_all_pids/0,
-	 is_existing_resource/3
+	 is_existing_resource/3,
+	 get_commands_spec/0
 	]).
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -323,7 +324,7 @@ init([]) ->
 	      ejabberd_hooks:add(remove_user, Host,
 				 ejabberd_sm, disconnect_removed_user, 100)
       end, ?MYHOSTS),
-    ejabberd_commands:register_commands(commands()),
+    ejabberd_commands:register_commands(get_commands_spec()),
     {ok, #state{}}.
 
 handle_call(_Request, _From, State) ->
@@ -361,7 +362,7 @@ handle_info({unregister_iq_handler, Host, XMLNS},
 handle_info(_Info, State) -> {noreply, State}.
 
 terminate(_Reason, _State) ->
-    ejabberd_commands:unregister_commands(commands()),
+    ejabberd_commands:unregister_commands(get_commands_spec()),
     ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -418,10 +419,10 @@ do_route(From, To, #xmlel{} = Packet) ->
       <<"">> ->
 	  case Name of
 	    <<"presence">> ->
-		{Pass, _Subsc} = case xml:get_attr_s(<<"type">>, Attrs)
+		{Pass, _Subsc} = case fxml:get_attr_s(<<"type">>, Attrs)
 				     of
 				   <<"subscribe">> ->
-				       Reason = xml:get_path_s(Packet,
+				       Reason = fxml:get_path_s(Packet,
 							       [{elem,
 								 <<"status">>},
 								cdata]),
@@ -482,7 +483,7 @@ do_route(From, To, #xmlel{} = Packet) ->
 		   true -> ok
 		end;
 	    <<"message">> ->
-		case xml:get_attr_s(<<"type">>, Attrs) of
+		case fxml:get_attr_s(<<"type">>, Attrs) of
 		  <<"chat">> -> route_message(From, To, Packet, chat);
 		  <<"headline">> -> route_message(From, To, Packet, headline);
 		  <<"error">> -> ok;
@@ -502,7 +503,7 @@ do_route(From, To, #xmlel{} = Packet) ->
 	    [] ->
 		case Name of
 		  <<"message">> ->
-		      case xml:get_attr_s(<<"type">>, Attrs) of
+		      case fxml:get_attr_s(<<"type">>, Attrs) of
 			<<"chat">> -> route_message(From, To, Packet, chat);
 			<<"normal">> -> route_message(From, To, Packet, normal);
 			<<"">> -> route_message(From, To, Packet, normal);
@@ -513,7 +514,7 @@ do_route(From, To, #xmlel{} = Packet) ->
 			    ejabberd_router:route(To, From, Err)
 		      end;
 		  <<"iq">> ->
-		      case xml:get_attr_s(<<"type">>, Attrs) of
+		      case fxml:get_attr_s(<<"type">>, Attrs) of
 			<<"error">> -> ok;
 			<<"result">> -> ok;
 			_ ->
@@ -723,7 +724,7 @@ get_sm_backend() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% ejabberd commands
 
-commands() ->
+get_commands_spec() ->
     [#ejabberd_commands{name = connected_users,
 			tags = [session],
 			desc = "List all established sessions",

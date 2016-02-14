@@ -104,7 +104,6 @@ ERL_INETRC=$ETC_DIR/inetrc
 # define mnesia options
 MNESIA_OPTS="-mnesia dir \"\\\"$SPOOL_DIR\\\"\" $MNESIA_OPTIONS"
 # define erl parameters
-ERL_OPTIONS=$(echo $ERL_OPTIONS | sed 's/ /\\ /g')
 ERLANG_OPTS="+K $POLL -smp $SMP +P $ERL_PROCESSES $ERL_OPTIONS"
 KERNEL_OPTS=""
 if [ "$FIREWALL_WINDOW" != "" ] ; then
@@ -164,7 +163,11 @@ shell_escape()
 {
     local RES=()
     for i in "$@"; do
-        printf '%q ' "$i"
+        if test -z "$i"; then
+            printf '"" '
+        else
+            printf '"%q" ' "$i" | sed 's/\\\\n/\n/g;s/\\\\t/\t/g;s/\\\\r/\r/g'
+        fi
     done
 }
 
