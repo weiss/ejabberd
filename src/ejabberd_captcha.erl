@@ -63,6 +63,9 @@
 
 -define(CAPTCHA_LIFETIME, 120000).
 
+-define(CAPTCHA_CHARS, % Avoid "oO0" and "l1" due to the risk of confusion.
+	<<"abcdefghijkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789">>).
+
 -define(LIMIT_PERIOD, 60*1000*1000).
 
 -type error() :: efbig | enodata | limit | malformed_image | timeout.
@@ -435,7 +438,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 create_image() -> create_image(undefined).
 
 create_image(Limiter) ->
-    Key = str:substr(randoms:get_string(), 1, 6),
+    Key = rand_string(6),
     create_image(Limiter, Key).
 
 create_image(Limiter, Key) ->
@@ -662,6 +665,18 @@ clean_treap(Treap, CleanPriority) ->
 
 now_priority() ->
     -p1_time_compat:system_time(micro_seconds).
+
+-spec rand_string(non_neg_integer()) -> binary().
+
+rand_string(Length) ->
+    rand_string(<<>>, Length).
+
+-spec rand_string(binary(), non_neg_integer()) -> binary().
+
+rand_string(Acc, 0) -> Acc;
+rand_string(Acc, N) ->
+    Pos = crypto:rand_uniform(0, byte_size(?CAPTCHA_CHARS)),
+    rand_string(<<Acc/binary, (binary:at(?CAPTCHA_CHARS, Pos))>>, N - 1).
 
 opt_type(captcha_cmd) ->
     fun (FileName) ->
