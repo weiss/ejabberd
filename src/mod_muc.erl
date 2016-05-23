@@ -43,6 +43,10 @@
 	 forget_room/3,
 	 create_room/5,
 	 shutdown_rooms/1,
+	 reset_room_date/2,
+	 update_room_date/2,
+	 delete_room_date/2,
+	 list_unused_rooms/2,
 	 process_iq_disco_items/4,
 	 broadcast_service_message/2,
 	 export/1,
@@ -56,10 +60,15 @@
 	 mod_opt_type/1]).
 
 -include("ejabberd.hrl").
+-include("ejabberd_commands.hrl").
 -include("logger.hrl").
 
 -include("jlib.hrl").
 -include("mod_muc.hrl").
+
+-record(muc_room_date,
+        {name_host = {<<"">>, <<"">>} :: {binary(), binary()} | {'_', binary()},
+         date = 0 :: non_neg_integer()}).
 
 -record(state,
 	{host = <<"">> :: binary(),
@@ -93,12 +102,14 @@ start_link(Host, Opts) ->
 			  [Host, Opts], []).
 
 start(Host, Opts) ->
+    ejabberd_commands:register_commands(commands()),
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     ChildSpec = {Proc, {?MODULE, start_link, [Host, Opts]},
 		 temporary, 1000, worker, [?MODULE]},
     supervisor:start_child(ejabberd_sup, ChildSpec).
 
 stop(Host) ->
+    ejabberd_commands:unregister_commands(commands()),
     Rooms = shutdown_rooms(Host),
     Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
     gen_server:call(Proc, stop),
@@ -176,6 +187,63 @@ can_use_nick(ServerHost, Host, JID, Nick) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:can_use_nick(LServer, Host, JID, Nick).
 
+reset_room_date(Host, Name) ->
+    update_room_date(Host, Name, 0).
+
+update_room_date(Host, Name) ->
+    Today = get_days(),
+    update_room_date(Host, Name, Today).
+
+update_room_date(Host, Name, Days) ->
+    F = fun () ->
+		mnesia:write(#muc_room_date{name_host = {Name, Host},
+					    date = Days})
+	end,
+    mnesia:transaction(F).
+
+delete_room_date(Host, Name) ->
+    F = fun () ->
+		mnesia:delete({muc_room_date, {Name, Host}})
+	end,
+    mnesia:transaction(F).
+
+delete_stale_room_dates() ->
+    F = fun ({Name, Host} = Key) ->
+		case mnesia:dirty_read(muc_room, Key) of
+		  [] ->
+		      delete_room_date(Host, Name);
+		  _ ->
+		      ok
+		end
+	end,
+    Keys = mnesia:dirty_all_keys(muc_room_date),
+    lists:foreach(F, Keys).
+
+get_days() ->
+    calendar:date_to_gregorian_days(element(1, erlang:localtime())).
+
+list_unused_rooms(Host, Days) ->
+    Today = get_days(),
+    Match = #muc_room_date{name_host='$1', date='$2'},
+    Guards = [{'>', '$2', 0},
+	      {'=<', '$2', Today - Days},
+	      {'==', {element, 2, '$1'}, Host}],
+    Result = ['$1'],
+    F = fun () ->
+		mnesia:select(muc_room_date, [{Match, Guards, Result}])
+	end,
+    {atomic, Rooms} = mnesia:transaction(F),
+    [Name || {Name, _Server} <- Rooms].
+
+commands() ->
+    [
+     #ejabberd_commands{name = list_unused_rooms, tags = [muc],
+			desc = "List persistent but unused rooms",
+			module = ?MODULE, function = list_unused_rooms,
+			args = [{host, binary}, {days, integer}],
+			result = {rooms, {list, {room, string}}}}
+    ].
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -185,6 +253,11 @@ init([Host, Opts]) ->
 				  <<"conference.@HOST@">>),
     Mod = gen_mod:db_mod(Host, Opts, ?MODULE),
     Mod:init(Host, [{host, MyHost}|Opts]),
+    mnesia:create_table(muc_room_date,
+			[{disc_copies, [node()]},
+			 {attributes,
+			  record_info(fields, muc_room_date)}]),
+    delete_stale_room_dates(),
     mnesia:create_table(muc_online_room,
 			[{ram_copies, [node()]},
 			 {attributes, record_info(fields, muc_online_room)}]),

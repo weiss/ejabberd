@@ -1630,6 +1630,12 @@ add_online_user(JID, Nick, Role, StateData) ->
 			   end,
 			   [LJID], StateData#state.nicks),
     tab_add_online_user(JID, StateData),
+    case (?DICT):size(StateData#state.users) of
+      0 when (StateData#state.config)#config.persistent ->
+	  mod_muc:reset_room_date(StateData#state.host, StateData#state.room);
+      _ ->
+	  ok
+    end,
     StateData#state{users = Users, nicks = Nicks}.
 
 remove_online_user(JID, StateData) ->
@@ -1642,6 +1648,14 @@ remove_online_user(JID, StateData, Reason) ->
     add_to_log(leave, {Nick, Reason}, StateData),
     tab_remove_online_user(JID, StateData),
     Users = (?DICT):erase(LJID, StateData#state.users),
+    case (?DICT):size(Users) of
+      0 when (StateData#state.config)#config.persistent ->
+	  mod_muc:update_room_date(StateData#state.host, StateData#state.room);
+      0 ->
+	  mod_muc:delete_room_date(StateData#state.host, StateData#state.room);
+      _ ->
+	  ok
+    end,
     Nicks = case (?DICT):find(Nick, StateData#state.nicks)
 		of
 	      {ok, [LJID]} ->
@@ -4167,6 +4181,7 @@ destroy_room(DEl, StateData) ->
 			      StateData#state.host, StateData#state.room);
       false -> ok
     end,
+    mod_muc:delete_room_date(StateData#state.host, StateData#state.room),
     {result, [], stop}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
