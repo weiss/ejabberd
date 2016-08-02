@@ -424,7 +424,7 @@ is_limited(Limiter) ->
 	  end
     end.
 
--define(CMD_TIMEOUT, 5000).
+-define(CMD_TIMEOUT, 15000).
 
 -define(MAX_FILE_SIZE, 64 * 1024).
 
