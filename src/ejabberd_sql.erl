@@ -156,7 +156,7 @@ sql_call(Host, Msg) ->
     case get(?STATE_KEY) of
       undefined ->
         case ejabberd_sql_sup:get_random_pid(Host) of
-          none -> {error, <<"Unknown Host">>};
+          none -> {error, <<"Unknown Host: ", Host/binary>>};
           Pid ->
 		sync_send_event(Pid,{sql_cmd, Msg,
 				     p1_time_compat:monotonic_time(milli_seconds)},
@@ -1085,6 +1085,17 @@ query_timeout(LServer) ->
       ejabberd_config:get_option({sql_query_timeout, LServer}, 60)).
 
 check_error({error, Why} = Err, _Query) when Why == killed ->
+    Err;
+check_error({error, <<"Unknown Host: ", Host/binary>> = Why} = Err,
+            #sql_query{} = Query) ->
+    case lists:member(Host, ?MYHOSTS) of
+        true ->
+            ?ERROR_MSG("SQL query '~s' at ~p failed: ~s",
+                       [Query#sql_query.hash, Query#sql_query.loc, Why]);
+        false ->
+            ?INFO_MSG("SQL query '~s' at ~p failed: ~s",
+                      [Query#sql_query.hash, Query#sql_query.loc, Why])
+    end,
     Err;
 check_error({error, Why} = Err, #sql_query{} = Query) ->
     ?ERROR_MSG("SQL query '~s' at ~p failed: ~p",
