@@ -153,6 +153,9 @@
 -define(NS_CLIENT_STATE,  <<"urn:xmpp:csi:0">>).
 -define(NS_STREAM_MGMT_2,  <<"urn:xmpp:sm:2">>).
 -define(NS_STREAM_MGMT_3,  <<"urn:xmpp:sm:3">>).
+-define(NS_REPORTING, <<"urn:xmpp:reporting:0">>).
+-define(NS_REPORTING_REASON_ABUSE, <<"urn:xmpp:reporting:reason:abuse:0">>).
+-define(NS_REPORTING_REASON_SPAM, <<"urn:xmpp:reporting:reason:spam:0">>).
 -define(NS_HTTP_UPLOAD, <<"urn:xmpp:http:upload">>).
 -define(NS_HTTP_UPLOAD_OLD, <<"eu:siacs:conversations:http:upload">>).
 -define(NS_THUMBS_1, <<"urn:xmpp:thumbs:1">>).

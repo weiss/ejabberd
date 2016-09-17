@@ -51,6 +51,15 @@ start(Host, Opts) ->
     ejabberd_hooks:add(privacy_iq_set, Host, ?MODULE,
 		       process_iq_set, 40),
     mod_disco:register_feature(Host, ?NS_BLOCKING),
+    case gen_mod:get_module_opt(spam_reports_to, Opts,
+				fun(L) when is_list(L) -> L end, []) of
+      [] ->
+	  ok;
+      _ ->
+	  mod_disco:register_feature(Host, ?NS_REPORTING),
+	  mod_disco:register_feature(Host, ?NS_REPORTING_REASON_ABUSE),
+	  mod_disco:register_feature(Host, ?NS_REPORTING_REASON_SPAM)
+    end,
     gen_iq_handler:add_iq_handler(ejabberd_sm, Host,
 				  ?NS_BLOCKING, ?MODULE, process_iq, IQDisc).
 
@@ -60,6 +69,15 @@ stop(Host) ->
     ejabberd_hooks:delete(privacy_iq_set, Host, ?MODULE,
 			  process_iq_set, 40),
     mod_disco:unregister_feature(Host, ?NS_BLOCKING),
+    case gen_mod:get_module_opt(Host, ?MODULE, spam_reports_to,
+				fun(L) when is_list(L) -> L end, []) of
+      [] ->
+	  ok;
+      _ ->
+	  mod_disco:unregister_feature(Host, ?NS_REPORTING),
+	  mod_disco:unregister_feature(Host, ?NS_REPORTING_REASON_ABUSE),
+	  mod_disco:unregister_feature(Host, ?NS_REPORTING_REASON_SPAM)
+    end,
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host,
 				     ?NS_BLOCKING).
 
@@ -88,12 +106,16 @@ process_iq_set(_, From, _To,
 		Txt = <<"No items found in this query">>,
 		{error, ?ERRT_BAD_REQUEST(Lang, Txt)};
 	    {<<"block">>, Els} ->
-		JIDs = parse_blocklist_items(Els, []),
+		Items = parse_blocklist_items(Els, []),
+		process_spam_reports(block, From, Items),
+		{JIDs, _Reports} = lists:unzip(Items),
 		process_blocklist_block(LUser, LServer, JIDs, Lang);
 	    {<<"unblock">>, []} ->
 		process_blocklist_unblock_all(LUser, LServer, Lang);
 	    {<<"unblock">>, Els} ->
-		JIDs = parse_blocklist_items(Els, []),
+		Items = parse_blocklist_items(Els, []),
+		process_spam_reports(unblock, From, Items),
+		{JIDs, _Reports} = lists:unzip(Items),
 		process_blocklist_unblock(LUser, LServer, JIDs, Lang);
 	    _ ->
 		Txt = <<"Unknown blocking command">>,
@@ -122,19 +144,45 @@ list_to_blocklist_jids([#listitem{type = jid,
 list_to_blocklist_jids([_ | Items], JIDs) ->
     list_to_blocklist_jids(Items, JIDs).
 
-parse_blocklist_items([], JIDs) -> JIDs;
+parse_blocklist_items([], Items) -> Items;
 parse_blocklist_items([#xmlel{name = <<"item">>,
-			      attrs = Attrs}
+			      attrs = Attrs,
+			      children = Children}
 		       | Els],
-		      JIDs) ->
+		      Items) ->
     case fxml:get_attr(<<"jid">>, Attrs) of
       {value, JID1} ->
 	  JID = jid:tolower(jid:from_string(JID1)),
-	  parse_blocklist_items(Els, [JID | JIDs]);
-      false -> parse_blocklist_items(Els, JIDs)
+	  Report = parse_spam_report(Children),
+	  parse_blocklist_items(Els, [{JID, Report} | Items]);
+      false -> parse_blocklist_items(Els, Items)
     end;
-parse_blocklist_items([_ | Els], JIDs) ->
-    parse_blocklist_items(Els, JIDs).
+parse_blocklist_items([_ | Els], Items) ->
+    parse_blocklist_items(Els, Items).
+
+parse_spam_report([]) -> undefined;
+parse_spam_report([#xmlel{name = <<"report">>,
+			  attrs = Attrs,
+			  children = Children} | Els]) ->
+    case fxml:get_attr(<<"xmlns">>, Attrs) of
+      {value, ?NS_REPORTING} ->
+	  parse_reason(Children);
+      _ ->
+	  parse_spam_report(Els)
+    end;
+parse_spam_report([_Junk | Els]) -> parse_spam_report(Els).
+
+parse_reason(Els) -> parse_reason(Els, {<<"spam">>, undefined}).
+
+parse_reason([], Reason) -> Reason;
+parse_reason([#xmlel{name = <<"text">>, children = Children} | Els], {Tag, _}) ->
+    parse_reason(Els, {Tag, fxml:get_cdata(Children)});
+parse_reason([#xmlel{name = <<"abuse">>} | Els], {_, Text}) ->
+    parse_reason(Els, {<<"abuse">>, Text});
+parse_reason([#xmlel{name = <<"spam">>} | Els], {_, Text}) ->
+    parse_reason(Els, {<<"spam">>, Text});
+parse_reason([_Junk | Els], Reason) ->
+    parse_reason(Els, Reason).
 
 process_blocklist_block(LUser, LServer, JIDs, Lang) ->
     Filter = fun (List) ->
@@ -212,6 +260,40 @@ process_blocklist_unblock(LUser, LServer, JIDs, Lang) ->
 	    {error, ?ERRT_INTERNAL_SERVER_ERROR(Lang, <<"Database failure">>)}
     end.
 
+process_spam_reports(block, _From, []) -> ok;
+process_spam_reports(block, #jid{luser = LUser, lserver = LServer}, Items) ->
+    case {gen_mod:get_module_opt(LServer, ?MODULE, spam_reports_to,
+				 fun(L) ->
+					 lists:map(fun jid:from_string/1, L)
+				 end, []),
+	  lists:filter(fun({_, Report}) -> Report /= undefined end, Items)} of
+      {[], _} -> ok;
+      {_, []} -> ok;
+      {ToJIDs, Reports} ->
+	  Reporter = jid:to_string(jid:make({LUser, LServer, <<"">>})),
+	  ServerJID = jid:make(<<"">>, LServer, <<"">>),
+	  Subj = ["Spam report from ", Reporter],
+	  Head = [Reporter, " reports:\n"],
+	  Body = [Head | lists:map(fun format_spam_report/1, Reports)],
+	  Message = #xmlel{name = <<"message">>,
+			   children = [#xmlel{name = <<"subject">>,
+					      children = [{xmlcdata,
+							   list_to_binary(Subj)}]},
+				       #xmlel{name = <<"body">>,
+					      children = [{xmlcdata,
+							   list_to_binary(Body)}]}]},
+	  lists:foreach(fun(To) ->
+				ejabberd_router:route(ServerJID, To, Message)
+			end, ToJIDs)
+    end;
+process_spam_reports(unblock, _From, _Items) -> ignored.
+
+format_spam_report({JID, {Tag, Text}}) when is_binary(Text),
+					    byte_size(Text) > 0 ->
+    io_lib:format("~n~s from ~s: ~s", [Tag, jid:to_string(JID), Text]);
+format_spam_report({JID, {Tag, _}}) ->
+    io_lib:format("~n~s from ~s", [Tag, jid:to_string(JID)]).
+
 make_userlist(Name, List) ->
     NeedDb = mod_privacy:is_list_needdb(List),
     #userlist{name = Name, list = List, needdb = NeedDb}.
@@ -253,5 +335,9 @@ db_mod(LServer) ->
     DBType = gen_mod:db_type(LServer, mod_privacy),
     gen_mod:db_mod(DBType, ?MODULE).
 
-mod_opt_type(iqdisc) -> fun gen_iq_handler:check_type/1;
-mod_opt_type(_) -> [iqdisc].
+mod_opt_type(iqdisc) ->
+    fun gen_iq_handler:check_type/1;
+mod_opt_type(spam_reports_to) ->
+    fun(L) -> lists:map(fun jid:from_string/1, L) end;
+mod_opt_type(_) ->
+    [iqdisc, spam_reports_to].
