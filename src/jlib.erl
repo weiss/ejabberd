@@ -46,7 +46,7 @@
 	 unwrap_carbon/1, is_standalone_chat_state/1,
 	 add_delay_info/3, add_delay_info/4,
 	 timestamp_to_legacy/1, timestamp_to_iso_basic/1, timestamp_to_iso/2,
-	 now_to_utc_string/1, now_to_local_string/1,
+	 now_to_utc_string/1, now_to_utc_string/2, now_to_local_string/1,
 	 datetime_string_to_timestamp/1,
 	 term_to_base64/1, base64_to_term/1,
 	 decode_base64/1, encode_base64/1, ip_to_list/1,

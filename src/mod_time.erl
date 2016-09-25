@@ -59,8 +59,7 @@ process_local_iq(_From, _To,
       get ->
 	  Now_universal = calendar:universal_time(),
 	  Now_local = calendar:universal_time_to_local_time(Now_universal),
-	  {UTC, UTC_diff} = jlib:timestamp_to_iso(Now_universal,
-						  utc),
+	  UTC = jlib:now_to_utc_string(now(), 3),
 	  Seconds_diff =
 	      calendar:datetime_to_gregorian_seconds(Now_local) -
 		calendar:datetime_to_gregorian_seconds(Now_universal),
@@ -79,8 +78,7 @@ process_local_iq(_From, _To,
 				 #xmlel{name = <<"utc">>, attrs = [],
 					children =
 					    [{xmlcdata,
-                                              <<UTC/binary,
-                                                UTC_diff/binary>>}]}]}]}
+                                              <<UTC/binary>>}]}]}]}
     end.
 
 sign(N) when N < 0 -> <<"-">>;
