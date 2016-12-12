@@ -22,13 +22,19 @@ CREATE TABLE users (
     serverkey varchar(64) NOT NULL DEFAULT '',
     salt varchar(64) NOT NULL DEFAULT '',
     iterationcount integer NOT NULL DEFAULT 0,
-    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires timestamp NOT NULL,
+    email varchar(255),
+    last_notification_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Add support for SCRAM auth to a database created before ejabberd 16.03:
 -- ALTER TABLE users ADD COLUMN serverkey varchar(64) NOT NULL DEFAULT '';
 -- ALTER TABLE users ADD COLUMN salt varchar(64) NOT NULL DEFAULT '';
 -- ALTER TABLE users ADD COLUMN iterationcount integer NOT NULL DEFAULT 0;
+
+-- Set expiry date to half a year into the future:
+CREATE TRIGGER before_insert_users BEFORE INSERT ON users FOR EACH ROW SET new.expires = date_add(CURRENT_TIMESTAMP(),INTERVAL 183 DAY);
 
 CREATE TABLE last (
     username varchar(191) PRIMARY KEY,
