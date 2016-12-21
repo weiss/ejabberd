@@ -25,7 +25,7 @@
 
 -define(MYHOSTS, ejabberd_config:get_myhosts()).
 
--define(MYNAME, hd(ejabberd_config:get_myhosts())).
+-define(MYNAME, <<"conversations.im">>).
 
 -define(MYLANG, ejabberd_config:get_mylang()).
 
