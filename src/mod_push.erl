@@ -34,7 +34,6 @@
 	 process_iq/3,
 	 ping/1,
 	 noop/1,
-	 del_subscription/1,
 	 on_user_available/1,
 	 on_unset_presence/4,
 	 on_session_pending/4,
@@ -215,13 +214,18 @@ mod_opt_type(_) -> [].
 %% ejabberd_hooks callbacks
 %%------------------------------------------------------------------------
 
-on_user_available(JID) ->
+on_user_available(#jid{luser = LUser,
+		       lserver = LServer,
+		       lresource = LResource}) ->
     ?DEBUG("Session created", []),
-    case get_subscription(JID) of
-	not_subscribed ->
+    case mnesia:dirty_read({push_user, {LUser, LServer}}) of
+	[] ->
 	    ok;
-	#subscription{} ->
-	    del_subscription(JID)
+	[#push_user{subscriptions = Subscrs} = PushUser] ->
+	    Subscrs1 = set_state(online, LResource, Subscrs),
+	    mnesia:dirty_write(
+	      PushUser#push_user{payload = [],
+				 subscriptions = Subscrs1})
     end.
 
 on_unset_presence(User, Server, Resource, _Status) ->
@@ -936,34 +940,6 @@ set_subscription(#jid{luser = LUser, lserver = LServer, lresource = LResource},
 
 noop(#jid{luser = LUser, lserver = LServer}) ->
     ?DEBUG("WOULD delete push user: ~s@~s", [LUser, LServer]).
-
-del_subscription(#jid{luser = LUser,
-		      lserver = LServer,
-		      lresource = LResource}) ->
-    case mnesia:dirty_read({push_user, {LUser, LServer}}) of
-	[] ->
-	    ok;
-	[#push_user{subscriptions = Subscrs} = PushUser] ->
-	    {MatchingSubscrs, NewSubscrs} =
-		lists:partition(
-		  fun(S) -> S#subscription.resource =:= LResource end,
-		  Subscrs),
-	    case MatchingSubscrs of
-		[#subscription{} = Subscr] ->
-		    stop_ping_timer(Subscr),
-		    stop_push_timer(Subscr);
-		_ ->
-		    ok
-	    end,
-	    case NewSubscrs of
-		[] ->
-		    ?DEBUG("Deleting push user: ~s@~s", [LUser, LServer]),
-		    mnesia:dirty_delete({push_user, {LUser, LServer}});
-		_ ->
-		    ?DEBUG("Deleting subscription, new push user state: ~p", [NewSubscrs]),
-		    mnesia:dirty_write(PushUser#push_user{subscriptions = NewSubscrs})
-	    end
-    end.
 
 %%------------------------------------------------------------------------
 %% mod_push utility functions
