@@ -133,12 +133,6 @@
 %% gen_mod callbacks
 %%------------------------------------------------------------------------
 
--spec(start/2 ::
-(
-    Host :: binary(),
-    Opts :: [any()])
-    -> any()
-).
 
 start(Host, _Opts) ->
     mnesia:create_table(push_user,
@@ -177,11 +171,6 @@ start(Host, _Opts) ->
 
 %%------------------------------------------------------------------------
 
--spec(stop/1 ::
-(
-    Host :: binary())
-    -> any()
-).
 
 stop(Host) ->
     gen_iq_handler:remove_iq_handler(ejabberd_sm, Host, ?NS_PUSH),
@@ -392,14 +381,6 @@ was_offline_message(Message, LServer) ->
 
 %%------------------------------------------------------------------------
 
--spec(enable/4 ::
-(
-    UserJid :: jid(),
-    PubsubJid :: jid(),
-    Node :: binary(),
-    XData :: [false | xmlel()])
-    -> {error, xmlel()} | {enabled, ok} | {enabled, [xmlel()]}
-).
 
 enable(_UserJid, _PubsubJid, undefined, _XDataForms) ->
     {error, ?ERR_NOT_ACCEPTABLE};
@@ -493,13 +474,6 @@ enable(#jid{luser = LUser, lserver = LServer, lresource = LResource},
 
 %%------------------------------------------------------------------------
 
--spec(disable/3 ::
-(
-    From :: jid(),
-    PubsubJid :: jid(),
-    Node :: binary())
-    -> {disabled, ok} | {error, xmlel()}
-).
 
 disable(_From, _PubsubJid, <<"">>) ->
     {error, ?ERR_NOT_ACCEPTABLE};
@@ -529,12 +503,6 @@ disable(#jid{luser = LUser, lserver = LServer},
 
 %%------------------------------------------------------------------------
 
--spec(delete_subscriptions/2 ::
-(
-    BareJid :: bare_jid(),
-    SubscriptionPred :: fun((subscription()) -> boolean()))
-    -> ok | not_found
-).
 
 delete_subscriptions({LUser, LServer}, SubscriptionPred) ->
     case mnesia:dirty_read({push_user, {LUser, LServer}}) of
@@ -563,13 +531,6 @@ delete_subscriptions({LUser, LServer}, SubscriptionPred) ->
 
 %%------------------------------------------------------------------------
 
--spec(dispatch/3 ::
-(
-    Stanzas :: [xmlel()],
-    UserJid :: jid(),
-    State :: pending | waiting | offline)
-    -> ok | not_subscribed
-).
 
 dispatch(Stanzas, #jid{luser = LUser, lserver = LServer, lresource = LResource} = JID,
 	 State) ->
@@ -615,14 +576,6 @@ dispatch(Stanzas, #jid{luser = LUser, lserver = LServer, lresource = LResource} 
 
 %%------------------------------------------------------------------------
 
--spec(do_dispatch/4 ::
-(
-    RegType :: reg_type(),
-    UserBare :: bare_jid(),
-    NodeId :: binary(),
-    Payload :: payload())
-    -> ok
-).
 
 do_dispatch({local_reg, _, _Secret}, _UserBare, _NodeId, _Payload) ->
     throw(not_implemented);
@@ -633,15 +586,6 @@ do_dispatch({remote_reg, PubsubHost, Secret}, UserBare, NodeId, Payload) ->
 
 %%------------------------------------------------------------------------
 
--spec(do_dispatch_remote/5 ::
-(
-    UserBare :: bare_jid(),
-    PubsubJid :: jid(),
-    Node :: binary(),
-    Payload :: payload(),
-    Secret :: binary() | {binary(), binary()} | undefined)
-    -> any()
-).
 
 do_dispatch_remote({U, S}, _PubsubJid, _Node, _Payload, undefined) ->
     ?DEBUG("Got no secret for ~s@~s", [U, S]); % Needs to re-enable.
@@ -696,7 +640,6 @@ do_dispatch_remote({User, Server}, PubsubJid, Node, Payload, {SecretK, SecretV})
 
 %%------------------------------------------------------------------------
 
--spec ping(jid()) -> ok.
 
 ping(#jid{luser = LUser, lserver = LServer, lresource = LResource} = JID) ->
     case mnesia:dirty_read({push_user, {LUser, LServer}}) of
@@ -719,7 +662,6 @@ ping(#jid{luser = LUser, lserver = LServer, lresource = LResource} = JID) ->
     end,
     ok.
 
--spec start_ping_timer(subscription(), jid()) -> subscription().
 
 start_ping_timer(#subscription{ping_timer = undefined} = Subscr, JID) ->
     ?DEBUG("Starting ping timer for ~s", [jid:to_string(JID)]),
@@ -729,7 +671,6 @@ start_ping_timer(#subscription{ping_timer = undefined} = Subscr, JID) ->
 start_ping_timer(Subscr, _JID) ->
     Subscr.
 
--spec start_push_timer(subscription(), jid()) -> subscription().
 
 start_push_timer(#subscription{push_timer = undefined} = Subscr, JID) ->
     ?DEBUG("Starting push timer for ~s", [jid:to_string(JID)]),
@@ -739,7 +680,6 @@ start_push_timer(#subscription{push_timer = undefined} = Subscr, JID) ->
 start_push_timer(Subscr, _JID) ->
     Subscr.
 
--spec stop_ping_timer(subscription()) -> subscription().
 
 stop_ping_timer(#subscription{ping_timer = undefined} = Subscr) ->
     Subscr;
@@ -748,7 +688,6 @@ stop_ping_timer(#subscription{ping_timer = PingTimer} = Subscr) ->
     timer:cancel(PingTimer),
     Subscr#subscription{ping_timer = undefined}.
 
--spec stop_push_timer(subscription()) -> subscription().
 
 stop_push_timer(#subscription{push_timer = undefined} = Subscr) ->
     Subscr;
@@ -759,7 +698,6 @@ stop_push_timer(#subscription{push_timer = PushTimer} = Subscr) ->
 
 %%------------------------------------------------------------------------
 
--spec(on_remove_user/2 :: (User :: binary(), Server :: binary()) -> ok).
 
 on_remove_user(User, Server) ->
     case mnesia:dirty_read({push_user, {User, Server}}) of
@@ -772,7 +710,6 @@ on_remove_user(User, Server) ->
 
 %%------------------------------------------------------------------------
 
--spec(notify_previous_users/1 :: (Host :: binary()) -> ok).
 
 notify_previous_users(Host) ->
     MatchHead = #push_user{bare_jid = {'_', Host}, _ = '_'},
@@ -797,13 +734,6 @@ notify_previous_users(Host) ->
 
 %%------------------------------------------------------------------------
 
--spec(process_iq/3 ::
-(
-    From :: jid(),
-    _To :: jid(),
-    IQ :: iq())
-    -> iq()
-).
 
 process_iq(From, _To, #iq{type = Type, sub_el = SubEl} = IQ) ->
     JidB = proplists:get_value(<<"jid">>, SubEl#xmlel.attrs),
@@ -855,15 +785,6 @@ process_iq(From, _To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 
 %%------------------------------------------------------------------------
 
--spec(on_disco_sm_features/5 ::
-(
-    Acc :: any(),
-    _From :: jid(),
-    _To :: jid(),
-    Node :: binary(),
-    _Lang :: binary())
-    -> any()
-).
 
 on_disco_sm_features(empty, _From, _To, <<"">>, _Lang) ->
     ?DEBUG("on_disco_sm_features, returning ~p",
@@ -881,15 +802,6 @@ on_disco_sm_features(Acc, _From, _To, _Node, _Lang) ->
 
 %%------------------------------------------------------------------------
 
--spec(on_disco_sm_identity/5 ::
-(
-    Acc :: any(),
-    From :: jid(),
-    To :: jid(),
-    Node :: binary(),
-    _Lang :: binary())
-    -> any()
-).
 
 on_disco_sm_identity(Acc, From, To, <<"">>, _Lang) ->
     FromL = jid:tolower(From),
@@ -945,7 +857,6 @@ noop(#jid{luser = LUser, lserver = LServer}) ->
 %% mod_push utility functions
 %%------------------------------------------------------------------------
 
--spec(get_global_config/1 :: (Host :: binary()) -> user_config()).
 
 get_global_config(Host) ->
     [{'include-senders',
@@ -967,13 +878,6 @@ get_global_config(Host) ->
 
 %%------------------------------------------------------------------------
 
--spec(make_config/3 ::
-(
-    XDataForms :: [xmlel()],
-    OldConfig :: user_config(),
-    ConfigPrivilege :: disable_only | enable_disable)
-    -> {user_config(), user_config()} | error
-).
 
 make_config(XDataForms, OldConfig, ConfigPrivilege) ->
     %% if a user is allowed to change an option from OldValue to NewValue,
@@ -1036,13 +940,6 @@ make_config(XDataForms, OldConfig, ConfigPrivilege) ->
 
 %%------------------------------------------------------------------------
 
--spec(make_payload/3 ::
-(
-    Stanzas :: [xmlel()],
-    Payload :: payload(),
-    Config :: user_config())
-    -> {payload(), [{erlang:timestamp(), xmlel()}]}
-).
 
 %% TODO: Don't return StanzasToStore.
 
@@ -1117,12 +1014,6 @@ make_payload(Stanzas, Payload, Config) ->
 
 %%------------------------------------------------------------------------
 
--spec(filter_payload/2 ::
-(
-    Payload :: payload(),
-    Config :: user_config())
-    -> payload()
-).
 
 filter_payload(Payload, Config) ->
     OptsConfigMapping =
@@ -1140,13 +1031,6 @@ filter_payload(Payload, Config) ->
 
 %%------------------------------------------------------------------------
 
--spec(set_state/3 ::
-(
-    NewVal :: state(),
-    Resource :: binary(),
-    Subscrs :: [subscription()])
-    -> [subscription()]
-).
 
 set_state(State, Resource, Subscrs) ->
     ?DEBUG("Setting push state: ~p, ~p, ~p", [State, Resource, Subscrs]),
@@ -1227,23 +1111,10 @@ get_xdata_elements([], Acc) ->
 
 %%------------------------------------------------------------------------
 
--spec(get_xdata_value/2 ::
-(
-    FieldName :: binary(),
-    Fields :: [{binary(), [binary()]}])
-    -> error | undefined | binary()
-).
 
 get_xdata_value(FieldName, Fields) ->
     get_xdata_value(FieldName, Fields, undefined).
 
--spec(get_xdata_value/3 ::
-(
-    FieldName :: binary(),
-    Fields :: [{binary(), [binary()]}],
-    DefaultValue :: any())
-    -> any()
-).
 
 get_xdata_value(FieldName, Fields, DefaultValue) ->
     case proplists:get_value(FieldName, Fields, [DefaultValue]) of
@@ -1251,41 +1122,16 @@ get_xdata_value(FieldName, Fields, DefaultValue) ->
 	_ -> error
     end.
 
--spec(get_xdata_values/2 ::
-(
-    FieldName :: binary(),
-    Fields :: [{binary(), [binary()]}])
-    -> [binary()]
-).
 
 get_xdata_values(FieldName, Fields) ->
     get_xdata_values(FieldName, Fields, []).
 
--spec(get_xdata_values/3 ::
-(
-    FieldName :: binary(),
-    Fields :: [{binary(), [binary()]}],
-    DefaultValue :: any())
-    -> any()
-).
 
 get_xdata_values(FieldName, Fields, DefaultValue) ->
     proplists:get_value(FieldName, Fields, DefaultValue).
 
 %%------------------------------------------------------------------------
 
--spec(parse_form/4 ::
-(
-    [false | xmlel()],
-    FormType :: binary(),
-    RequiredFields :: [{multi, binary()} | {single, binary()} |
-                       {{multi, binary()}, fun((binary()) -> any())} |
-                       {{single, binary()}, fun((binary()) -> any())}],
-    OptionalFields :: [{multi, binary()} | {single, binary()} |
-                       {{multi, binary()}, fun((binary()) -> any())} |
-                       {{single, binary()}, fun((binary()) -> any())}])
-    -> not_found | error | {result, [any()]}
-).
 
 parse_form([], _FormType, _RequiredFields, _OptionalFields) ->
     not_found;
@@ -1347,7 +1193,6 @@ parse_form([XDataForm|T], FormType, RequiredFields, OptionalFields) ->
 
 %%------------------------------------------------------------------------
 
--spec(make_config_form/1 :: (user_config()) -> [xmlel()]).
 
 make_config_form(Opts) ->
     Fields =
@@ -1363,7 +1208,6 @@ make_config_form(Opts) ->
 
 %%------------------------------------------------------------------------
 
--spec(boolean_to_binary/1 :: (Bool :: boolean()) -> binary()).
 
 boolean_to_binary(Bool) ->
     case Bool of
@@ -1371,23 +1215,10 @@ boolean_to_binary(Bool) ->
 	false -> <<"0">>
     end.
 
--spec(binary_to_boolean/2 ::
-(
-    Binary :: binary(),
-    DefaultResult :: any())
-    -> any()
-).
 
 binary_to_boolean(Binary, DefaultResult) ->
     binary_to_boolean(Binary, DefaultResult, error).
 
--spec(binary_to_boolean/3 ::
-(
-    Binary :: binary(),
-    DefaultResult :: any(),
-    InvalidResult :: any())
-    -> any()
-).
 
 binary_to_boolean(Binary, DefaultResult, InvalidResult) ->
     case Binary of
@@ -1401,11 +1232,6 @@ binary_to_boolean(Binary, DefaultResult, InvalidResult) ->
 
 %%------------------------------------------------------------------------
 
--spec(ljid_to_jid/1 ::
-(
-    ljid())
-    -> jid()
-).
 
 ljid_to_jid({LUser, LServer, LResource}) ->
     #jid{user = LUser, server = LServer, resource = LResource,
