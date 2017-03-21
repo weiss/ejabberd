@@ -44,6 +44,8 @@
 
 -include("xmpp.hrl").
 
+-define(VERSION_HEADER, {<<"ejabberd-version">>, ?VERSION}).
+
 -record(state,
 	{access_commands = [] :: list(),
          auth = noauth        :: noauth | map(),
@@ -231,7 +233,7 @@ process(_, #request{method = 'POST', data = Data, opts = Opts, ip = {IP, _}}) ->
     State = #state{access_commands = AccessCommands, get_auth = GetAuth, ip = IP},
     case fxml_stream:parse_element(Data) of
 	{error, _} ->
-	    {400, [],
+	    {400, [?VERSION_HEADER],
 	     #xmlel{name = <<"h1">>, attrs = [],
 		    children = [{xmlcdata, <<"Malformed XML">>}]}};
 	El ->
@@ -239,19 +241,19 @@ process(_, #request{method = 'POST', data = Data, opts = Opts, ip = {IP, _}}) ->
 		{error, _} = Err ->
 		    ?ERROR_MSG("XML-RPC request ~s failed with reason: ~p",
 			       [Data, Err]),
-		    {400, [],
+		    {400, [?VERSION_HEADER],
 		     #xmlel{name = <<"h1">>, attrs = [],
 			    children = [{xmlcdata, <<"Malformed Request">>}]}};
 		{ok, RPC} ->
 		    ?DEBUG("got XML-RPC request: ~p", [RPC]),
 		    {false, Result} = handler(State, RPC),
 		    XML = fxml:element_to_binary(fxmlrpc:encode(Result)),
-		    {200, [{<<"Content-Type">>, <<"text/xml">>}],
+		    {200, [{<<"Content-Type">>, <<"text/xml">>}, ?VERSION_HEADER],
 		     <<"<?xml version=\"1.0\"?>", XML/binary>>}
 	    end
     end;
 process(_, _) ->
-    {400, [],
+    {400, [?VERSION_HEADER],
      #xmlel{name = <<"h1">>, attrs = [],
 	    children = [{xmlcdata, <<"400 Bad Request">>}]}}.
 
