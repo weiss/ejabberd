@@ -219,12 +219,11 @@ recv_test_message(Config) ->
 	     body = [#text{data = <<"test">>}]} = recv_message(Config).
 
 handle_notification(Config) ->
-    From = server_jid(Config),
     Item = #ps_item{xml_els = [xmpp:encode(#push_notification{})]},
     Publish = #ps_publish{node = ?PUSH_NODE, items = [Item]},
     XData = #xdata{type = submit, fields = ?PUSH_XDATA_FIELDS},
     PubSub = #pubsub{publish = Publish, publish_options = XData},
-    IQ = #iq{type = set, from = From, sub_els = [PubSub]} = recv_iq(Config),
+    IQ = #iq{type = set, sub_els = [PubSub]} = recv_iq(Config),
     send(Config, make_iq_result(IQ)).
 
 clean(Config) ->

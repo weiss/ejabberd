@@ -44,7 +44,7 @@
 -export([get_commands_spec/0, delete_old_sessions/1]).
 
 %% API (used by mod_push_keepalive).
--export([notify/1, notify/3, notify/5]).
+-export([notify/1, notify/3, notify/6]).
 
 -include("ejabberd.hrl").
 -include("ejabberd_commands.hrl").
@@ -418,13 +418,13 @@ notify(LUser, LServer, Clients) ->
 				  (timeout) ->
 				       ok % Hmm.
 			       end,
-	      notify(LServer, PushLJID, Node, XData, HandleResponse)
+	      notify(LUser, LServer, PushLJID, Node, XData, HandleResponse)
       end, Clients).
 
--spec notify(binary(), ljid(), binary(), xdata(),
+-spec notify(binary(), binary(), ljid(), binary(), xdata(),
 	     fun((iq() | timeout) -> any())) -> ok.
-notify(LServer, PushLJID, Node, XData, HandleResponse) ->
-    From = jid:make(LServer),
+notify(LUser, LServer, PushLJID, Node, XData, _HandleResponse) ->
+    From = jid:make(LUser, LServer),
     Item = #ps_item{xml_els = [xmpp:encode(#push_notification{})]},
     PubSub = #pubsub{publish = #ps_publish{node = Node, items = [Item]},
 		     publish_options = XData},
@@ -433,7 +433,7 @@ notify(LServer, PushLJID, Node, XData, HandleResponse) ->
 	     to = jid:make(PushLJID),
 	     id = randoms:get_string(),
 	     sub_els = [PubSub]},
-    ejabberd_local:route_iq(IQ, HandleResponse),
+    ejabberd_router:route(IQ),
     ok.
 
 %%--------------------------------------------------------------------

@@ -220,17 +220,6 @@ maybe_start_wakeup_timer(#{push_wake_on_timeout := true,
 maybe_start_wakeup_timer(State) ->
     State.
 
--spec wake_all(binary()) -> ok | error.
+-spec wake_all(binary()) -> no_return().
 wake_all(LServer) ->
-    ?INFO_MSG("Waking all push clients on ~s", [LServer]),
-    Mod = gen_mod:db_mod(LServer, mod_push),
-    case Mod:lookup_sessions(LServer) of
-	{ok, Sessions} ->
-	    IgnoreResponse = fun(_) -> ok end,
-	    lists:foreach(fun({_, PushLJID, Node, XData}) ->
-				  mod_push:notify(LServer, PushLJID, Node,
-						  XData, IgnoreResponse)
-			  end, Sessions);
-	error ->
-	    error
-    end.
+    error(not_implemented).
