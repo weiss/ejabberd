@@ -32,54 +32,24 @@
 -export([start/2, stop/1, reload/3,
          depends/2, mod_opt_type/1]).
 
--export([filter_packet/1, filter_offline_msg/1]).
+-export([filter_message/1]).
 
 -include("xmpp.hrl").
 -include("ejabberd.hrl").
 -include("logger.hrl").
 
--define(SETS, gb_sets).
-
 start(Host, _Opts) ->
-    ejabberd_hooks:add(user_receive_packet, Host,
-                       ?MODULE, filter_packet, 25),
-    ejabberd_hooks:add(offline_message_hook, Host,
-		       ?MODULE, filter_offline_msg, 25).
+    ejabberd_hooks:add(sm_receive_packet, Host,
+                       ?MODULE, filter_packet, 25).
 
 stop(Host) ->
-    ejabberd_hooks:delete(user_receive_packet, Host,
-                          ?MODULE, filter_packet, 25),
-    ejabberd_hooks:delete(offline_message_hook, Host,
-			  ?MODULE, filter_offline_msg, 25).
+    ejabberd_hooks:delete(sm_receive_packet, Host,
+                          ?MODULE, filter_packet, 25).
 
 reload(_Host, _NewOpts, _OldOpts) ->
     ok.
 
-filter_packet({#message{from = From} = Msg, State} = Acc) ->
-    LFrom = jid:tolower(From),
-    LBFrom = jid:remove_resource(LFrom),
-    #{pres_a := PresA} = State,
-    case (?SETS):is_element(LFrom, PresA)
-	orelse (?SETS):is_element(LBFrom, PresA)
-        orelse sets_bare_member(LBFrom, PresA) of
-	false ->
-	    case check_message(Msg) of
-		allow -> Acc;
-		deny -> {stop, {drop, State}}
-	    end;
-	true ->
-	    Acc
-    end;
-filter_packet(Acc) ->
-    Acc.
-
-filter_offline_msg({_Action, #message{} = Msg} = Acc) ->
-    case check_message(Msg) of
-	allow -> Acc;
-	deny -> {stop, {drop, Msg}}
-    end.
-
-check_message(#message{from = From, to = To} = Msg) ->
+filter_message(#message{from = From, to = To} = Msg) ->
     LServer = To#jid.lserver,
     AllowLocalUsers =
         gen_mod:get_module_opt(LServer, ?MODULE, allow_local_users, true),
@@ -104,15 +74,15 @@ check_message(#message{from = From, to = To} = Msg) ->
 		    end,
 		    if
 			Drop ->
-			    deny;
+			    drop;
 			true ->
-			    allow
+			    Msg
 		    end;
 		some ->
-		    allow
+		    Msg
 	    end;
 	true ->
-	    allow
+	    Msg
     end.
 
 -spec check_subscription(jid(), jid()) -> none | some.
@@ -142,32 +112,6 @@ check_subscription(From, To) ->
 	_ ->
 	    some
     end.
-
-sets_bare_member({U, S, <<"">>} = LBJID, Set) ->
-    case ?SETS:next(sets_iterator_from(LBJID, Set)) of
-        {{U, S, _}, _} -> true;
-        _ -> false
-    end.
-
--ifdef(GB_SETS_ITERATOR_FROM).
-sets_iterator_from(Element, Set) ->
-    ?SETS:iterator_from(Element, Set).
--else.
-%% Copied from gb_sets.erl
-%% TODO: Remove after dropping R17 support
-sets_iterator_from(S, {_, T}) ->
-    iterator_from(S, T, []).
-
-iterator_from(S, {K, _, T}, As) when K < S ->
-    iterator_from(S, T, As);
-iterator_from(_, {_, nil, _} = T, As) ->
-    [T | As];
-iterator_from(S, {_, L, _} = T, As) ->
-    iterator_from(S, L, [T | As]);
-iterator_from(_, nil, As) ->
-    As.
--endif.
-
 
 depends(_Host, _Opts) ->
     [].
