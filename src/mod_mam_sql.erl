@@ -343,7 +343,7 @@ make_sql_query(User, LServer, MAMQuery, RSM) ->
             false ->
                 [<<"SELECT ">>, TopClause,
                  <<" timestamp, xml, peer, kind, nick"
-                  " FROM archive WHERE username='">>,
+                  " FROM archive IGNORE INDEX (i_timestamp) WHERE username='">>,
                  SUser, <<"'">>, WithClause, WithTextClause,
                  StartClause, EndClause, PageClause]
         end,
@@ -370,7 +370,7 @@ make_sql_query(User, LServer, MAMQuery, RSM) ->
               StartClause, EndClause, <<";">>]};
         false ->
             {QueryPage,
-             [<<"SELECT COUNT(*) FROM archive WHERE username='">>,
+             [<<"SELECT COUNT(*) FROM archive IGNORE INDEX (i_timestamp) WHERE username='">>,
               SUser, <<"'">>, WithClause, WithTextClause,
               StartClause, EndClause, <<";">>]}
     end.
