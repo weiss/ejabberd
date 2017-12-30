@@ -1923,6 +1923,24 @@ get_service_max_users(StateData) ->
 get_max_users_admin_threshold(StateData) ->
     mod_muc_opt:max_users_admin_threshold(StateData#state.server_host).
 
+-spec maybe_set_owner_affiliation(jid(), state()) -> state().
+maybe_set_owner_affiliation(_JID,
+			    #state{config = #config{members_only = false}} =
+			    StateData) ->
+    StateData;
+maybe_set_owner_affiliation(JID, StateData) ->
+    case {get_service_affiliation(JID, StateData),
+	  do_get_affiliation(JID, StateData)} of
+      {owner, none} ->
+	  BareJID = jid:remove_resource(JID),
+	  NewState = set_affiliation(BareJID, owner, StateData),
+	  send_affiliation(BareJID, owner, NewState),
+	  store_room(NewState),
+	  NewState;
+	_ ->
+	  StateData
+    end.
+
 -spec room_queue_new(binary(), ejabberd_shaper:shaper(), _) -> p1_queue:queue({message | presence, jid()}) | undefined.
 room_queue_new(ServerHost, Shaper, QueueType) ->
     HaveRoomShaper = Shaper /= none,
@@ -2374,7 +2392,7 @@ add_new_user(From, Nick, Packet, StateData) ->
 							   StateData)),
 			      send_initial_presences_and_messages(
 				From, Nick, Packet, NewState, StateData),
-			      NewState;
+			      maybe_set_owner_affiliation(From, NewState);
 			 true ->
 			      set_subscriber(From, Nick, Nodes, StateData)
 		      end,
