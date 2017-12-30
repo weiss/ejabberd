@@ -1273,6 +1273,38 @@ set_affiliation(JID, Affiliation, StateData, Reason) ->
 		   end,
     StateData#state{affiliations = Affiliations}.
 
+-spec get_stored_affiliation(jid(), state()) -> affiliation().
+get_stored_affiliation(JID, StateData) ->
+    LJID = jid:tolower(JID),
+    Res = case (?DICT):find(LJID, StateData#state.affiliations) of
+	    {ok, Affiliation} -> Affiliation;
+	    _ ->
+		LJID1 = jid:remove_resource(LJID),
+		case (?DICT):find(LJID1, StateData#state.affiliations)
+		    of
+		  {ok, Affiliation} -> Affiliation;
+		  _ ->
+		      LJID2 = setelement(1, LJID, <<"">>),
+		      case (?DICT):find(LJID2,
+					StateData#state.affiliations)
+			  of
+			{ok, Affiliation} -> Affiliation;
+			_ ->
+			    LJID3 = jid:remove_resource(LJID2),
+			    case (?DICT):find(LJID3,
+					      StateData#state.affiliations)
+				of
+			      {ok, Affiliation} -> Affiliation;
+			      _ -> none
+			    end
+		      end
+		end
+	  end,
+    case Res of
+      {A, _Reason} -> A;
+      _ -> Res
+    end.
+
 -spec get_affiliation(jid(), state()) -> affiliation().
 get_affiliation(JID, StateData) ->
     {_AccessRoute, _AccessCreate, AccessAdmin,
@@ -1282,32 +1314,7 @@ get_affiliation(JID, StateData) ->
 			      AccessAdmin, JID)
 	      of
 	    allow -> owner;
-	    _ ->
-		LJID = jid:tolower(JID),
-		case (?DICT):find(LJID, StateData#state.affiliations) of
-		  {ok, Affiliation} -> Affiliation;
-		  _ ->
-		      LJID1 = jid:remove_resource(LJID),
-		      case (?DICT):find(LJID1, StateData#state.affiliations)
-			  of
-			{ok, Affiliation} -> Affiliation;
-			_ ->
-			    LJID2 = setelement(1, LJID, <<"">>),
-			    case (?DICT):find(LJID2,
-					      StateData#state.affiliations)
-				of
-			      {ok, Affiliation} -> Affiliation;
-			      _ ->
-				  LJID3 = jid:remove_resource(LJID2),
-				  case (?DICT):find(LJID3,
-						    StateData#state.affiliations)
-				      of
-				    {ok, Affiliation} -> Affiliation;
-				    _ -> none
-				  end
-			    end
-		      end
-		end
+	    _ -> get_stored_affiliation(JID, StateData)
 	  end,
     case Res of
       {A, _Reason} -> A;
@@ -1429,6 +1436,24 @@ get_max_users_admin_threshold(StateData) ->
     gen_mod:get_module_opt(StateData#state.server_host,
 			   mod_muc, max_users_admin_threshold,
                            5).
+
+-spec maybe_set_owner_affiliation(jid(), state()) -> state().
+maybe_set_owner_affiliation(_JID,
+			    #state{config = #config{members_only = false}} =
+			    StateData) ->
+    StateData;
+maybe_set_owner_affiliation(JID, StateData) ->
+    case {get_service_affiliation(JID, StateData),
+	  get_stored_affiliation(JID, StateData)} of
+      {owner, none} ->
+	  BareJID = jid:remove_resource(JID),
+	  NewState = set_affiliation(BareJID, owner, StateData),
+	  send_affiliation(BareJID, owner, NewState),
+	  store_room(NewState),
+	  NewState;
+	_ ->
+	  StateData
+    end.
 
 -spec room_queue_new(binary(), shaper:shaper(), _) -> p1_queue:queue().
 room_queue_new(ServerHost, Shaper, QueueType) ->
@@ -1875,7 +1900,7 @@ add_new_user(From, Nick, Packet, StateData) ->
 							   StateData)),
 			      send_initial_presences_and_messages(
 				From, Nick, Packet, NewState, StateData),
-			      NewState;
+			      maybe_set_owner_affiliation(From, NewState);
 			 true ->
 			      set_subscriber(From, Nick, Nodes, StateData)
 		      end,
