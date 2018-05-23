@@ -29,7 +29,7 @@
 
 -behaviour(ejabberd_auth).
 
--export([start/1, stop/1, reload/1, set_password/3, check_password/4,
+-export([start/1, stop/1, reload/1, set_password/3, check_password/4, check_password/5,
 	 try_register/3, user_exists/2, remove_user/2,
 	 store_type/1, plain_password_required/1]).
 
@@ -52,10 +52,13 @@ plain_password_required(_) -> true.
 store_type(_) -> external.
 
 check_password(User, AuthzId, Server, Password) ->
+    check_password(User, AuthzId, Server, Password, undefined).
+
+check_password(User, AuthzId, Server, Password, IP) ->
     if AuthzId /= <<>> andalso AuthzId /= User ->
 	    {nocache, false};
        true ->
-	    check_password_extauth(User, AuthzId, Server, Password)
+	    check_password_extauth(User, AuthzId, Server, Password, IP)
     end.
 
 set_password(User, Server, Password) ->
@@ -86,9 +89,9 @@ remove_user(User, Server) ->
 	    Err
     end.
 
-check_password_extauth(User, _AuthzId, Server, Password) ->
+check_password_extauth(User, _AuthzId, Server, Password, IP) ->
     if Password /= <<"">> ->
-	    case extauth:check_password(User, Server, Password) of
+	    case extauth:check_password(User, Server, Password, IP) of
 		Res when is_boolean(Res) -> {cache, Res};
 		{error, Reason} ->
 		    {Tag, _} = failure(User, Server, check_password, Reason),

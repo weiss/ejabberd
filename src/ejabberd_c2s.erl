@@ -437,9 +437,9 @@ check_password_fun(<<"X-OAUTH2">>, #{lserver := LServer}) ->
 		_ -> {false, ejabberd_oauth}
 	    end
     end;
-check_password_fun(_Mech, #{lserver := LServer}) ->
+check_password_fun(_Mech, #{lserver := LServer, ip := IP}) ->
     fun(U, AuthzId, P) ->
-	    ejabberd_auth:check_password_with_authmodule(U, AuthzId, LServer, P)
+	    ejabberd_auth:check_password_with_authmodule(U, AuthzId, LServer, P, IP)
     end.
 
 check_password_digest_fun(_Mech, #{lserver := LServer}) ->
