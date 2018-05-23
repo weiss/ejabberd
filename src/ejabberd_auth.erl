@@ -34,6 +34,7 @@
 -export([start_link/0, host_up/1, host_down/1, config_reloaded/0,
 	 set_password/3, check_password/4,
 	 check_password/6, check_password_with_authmodule/4,
+	 check_password_with_authmodule/5,
 	 check_password_with_authmodule/6, try_register/3,
 	 get_users/0, get_users/1, password_to_scram/2,
 	 get_users/2, import_info/0,
@@ -232,12 +233,27 @@ check_password(User, AuthzId, Server, Password, Digest, DigestGen) ->
 				     binary(), binary()) -> false | {true, atom()}.
 check_password_with_authmodule(User, AuthzId, Server, Password) ->
     check_password_with_authmodule(
-      User, AuthzId, Server, Password, <<"">>, undefined).
+      User, AuthzId, Server, Password, <<"">>, undefined, undefined).
+
+-spec check_password_with_authmodule(binary(), binary(),
+				     binary(), binary(),
+				     tuple() | undefined) -> false | {true, atom()}.
+check_password_with_authmodule(User, AuthzId, Server, Password, IP) ->
+    check_password_with_authmodule(
+      User, AuthzId, Server, Password, <<"">>, undefined, IP).
 
 -spec check_password_with_authmodule(
 	binary(), binary(), binary(), binary(), binary(),
 	digest_fun() | undefined) -> false | {false, atom(), binary()} | {true, atom()}.
 check_password_with_authmodule(User, AuthzId, Server, Password, Digest, DigestGen) ->
+    check_password_with_authmodule(
+      User, AuthzId, Server, Password, Digest, DigestGen, undefined).
+
+-spec check_password_with_authmodule(
+	binary(), binary(), binary(), binary(), binary(),
+	digest_fun() | undefined,
+	tuple() | undefined) -> false | {true, atom()}.
+check_password_with_authmodule(User, AuthzId, Server, Password, Digest, DigestGen, IP) ->
     case validate_credentials(User, Server) of
 	{ok, LUser, LServer} ->
 	    case {jid:nodeprep(AuthzId), get_is_banned(LUser, LServer)} of
@@ -253,7 +269,7 @@ check_password_with_authmodule(User, AuthzId, Server, Password, Digest, DigestGe
 				fun(Mod, false) ->
 					case db_check_password(
 					       LUser, LAuthzId, LServer, Password,
-					       Digest, DigestGen, Mod) of
+					       Digest, DigestGen, IP, Mod) of
 					    true -> {true, Mod};
 					    false -> false;
 					    {stop, true} -> {stop, {true, Mod}};
@@ -518,7 +534,7 @@ remove_user(User, Server, Password) ->
 		       (Mod, _) ->
 			   case db_check_password(
 				  LUser, <<"">>, LServer, Password,
-				  <<"">>, undefined, Mod) of
+				  <<"">>, undefined, undefined, Mod) of
 			       true ->
 				   db_remove_user(LUser, LServer, Mod);
 			       {stop, true} ->
@@ -701,7 +717,7 @@ db_user_exists(User, Server, Mod) ->
     end.
 
 db_check_password(User, AuthzId, Server, ProvidedPassword,
-		  Digest, DigestFun, Mod) ->
+		  Digest, DigestFun, IP, Mod) ->
     case db_get_password(User, Server, Mod) of
 	{ok, ValidPassword} ->
 	    match_passwords(ProvidedPassword, ValidPassword, Digest, DigestFun);
@@ -712,7 +728,7 @@ db_check_password(User, AuthzId, Server, ProvidedPassword,
 			   cache_tab(Mod), {User, Server}, {ok, ProvidedPassword},
 			   fun() ->
 				   case Mod:check_password(
-					  User, AuthzId, Server, ProvidedPassword) of
+					  User, AuthzId, Server, ProvidedPassword, IP) of
 				       {CacheTag, true} -> {CacheTag, {ok, ProvidedPassword}};
 				       {CacheTag, {stop, true}} -> {CacheTag, {ok, ProvidedPassword}};
 				       {CacheTag, false} -> {CacheTag, error};
@@ -726,7 +742,7 @@ db_check_password(User, AuthzId, Server, ProvidedPassword,
 		    end;
 		{external, false} ->
 		    ets_cache:untag(
-		      Mod:check_password(User, AuthzId, Server, ProvidedPassword));
+		      Mod:check_password(User, AuthzId, Server, ProvidedPassword, IP));
 		_ ->
 		    false
 	    end
