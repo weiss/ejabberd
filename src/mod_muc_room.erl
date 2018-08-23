@@ -3914,6 +3914,7 @@ set_config(Opts, Config, ServerHost, Lang) ->
 	 ({moderatedroom, V}, C) -> C#config{moderated = V};
 	 ({members_by_default, V}, C) -> C#config{members_by_default = V};
 	 ({membersonly, V}, C) -> C#config{members_only = V};
+	 ({getmemberlist, _V}, C) -> C;
 	 ({captcha_protected, V}, C) -> C#config{captcha_protected = V};
 	 ({allowinvites, V}, C) -> C#config{allow_user_invites = V};
 	 ({allow_subscription, V}, C) -> C#config{allow_subscription = V};
