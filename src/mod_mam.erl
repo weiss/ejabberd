@@ -572,23 +572,14 @@ process_iq(#iq{type = set, lang = Lang,
     Why = {missing_attr, <<"default">>, <<"prefs">>, NS},
     ErrTxt = xmpp:io_format_error(Why),
     xmpp:make_error(IQ, xmpp:err_bad_request(ErrTxt, Lang));
-process_iq(#iq{from = #jid{luser = LUser, lserver = LServer},
-	       to = #jid{lserver = LServer},
-	       type = set, lang = Lang,
-	       sub_els = [#mam_prefs{xmlns = NS,
-				     default = Default,
-				     always = Always0,
-				     never = Never0}]} = IQ) ->
-    Always = lists:usort(get_jids(Always0)),
-    Never = lists:usort(get_jids(Never0)),
-    case write_prefs(LUser, LServer, LServer, Default, Always, Never) of
-	ok ->
-	    NewPrefs = prefs_el(Default, Always, Never, NS),
-	    xmpp:make_iq_result(IQ, NewPrefs);
-	_Err ->
-	    Txt = <<"Database failure">>,
-	    xmpp:make_error(IQ, xmpp:err_internal_server_error(Txt, Lang))
-    end;
+process_iq(#iq{from = #jid{luser = _LUser, lserver = _LServer},
+	       to = #jid{lserver = _LServer},
+	       type = set, lang = _Lang,
+	       sub_els = [#mam_prefs{xmlns = _NS,
+				     default = _Default,
+				     always = _Always0,
+				     never = _Never0}]} = IQ) ->
+    xmpp:make_error(IQ, xmpp:err_not_allowed());
 process_iq(#iq{from = #jid{luser = LUser, lserver = LServer},
 	       to = #jid{lserver = LServer},
 	       type = get, sub_els = [#mam_prefs{xmlns = NS}]} = IQ) ->
