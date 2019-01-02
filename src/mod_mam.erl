@@ -263,11 +263,7 @@ remove_user(User, Server) ->
     end.
 
 -spec remove_room(binary(), binary(), binary()) -> ok.
-remove_room(LServer, Name, Host) ->
-    LName = jid:nodeprep(Name),
-    LHost = jid:nameprep(Host),
-    Mod = gen_mod:db_mod(LServer, ?MODULE),
-    Mod:remove_room(LServer, LName, LHost),
+remove_room(_LServer, _Name, _Host) ->
     ok.
 
 -spec remove_mam_for_user(binary(), binary()) ->
