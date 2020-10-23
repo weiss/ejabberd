@@ -47,6 +47,19 @@
 
 -define(NS_INBOX_1, <<"urn:xmpp:inbox:1">>). % TODO: Move to 'xmpp'.
 
+-callback init(binary(), gen_mod:opts())
+          -> any().
+-callback set(jid(), jid(), binary(), binary(), integer(), message())
+          -> ok | {error, db_failure}.
+-callback reset_unread(jid(), jid())
+          -> ok | {error, db_failure}.
+-callback get_unread_total(jid())
+          -> {unread, non_neg_integer} | {error, db_failure}.
+-callback remove_user(binary(), binary())
+          -> any().
+-callback delete_old_inboxes(binary() | global, integer())
+          -> any().
+
 %%--------------------------------------------------------------------
 %% gen_mod callbacks.
 %%--------------------------------------------------------------------

@@ -268,6 +268,22 @@ CREATE TABLE archive_prefs (
     PRIMARY KEY (server_host, username)
 );
 
+CREATE TABLE inbox (
+    username text NOT NULL,
+    server_host text NOT NULL,
+    timestamp bigint NOT NULL,
+    peer text NOT NULL,
+    mam_id text NOT NULL,
+    msg_id text NOT NULL,
+    xml text NOT NULL,
+    unread integer NOT NULL,
+    created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE INDEX i_inbox_sh_username ON inbox USING btree (server_host, username);
+CREATE INDEX i_inbox_sh_username_peer ON inbox USING btree (server_host, username, peer);
+CREATE INDEX i_inbox_sh_timestamp ON inbox USING btree (server_host, timestamp);
+
 CREATE TABLE vcard (
     username text NOT NULL,
     server_host text NOT NULL,

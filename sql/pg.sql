@@ -114,6 +114,21 @@ CREATE TABLE archive_prefs (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
+CREATE TABLE inbox (
+    username text NOT NULL,
+    timestamp bigint NOT NULL,
+    peer text NOT NULL,
+    mam_id text NOT NULL,
+    msg_id text NOT NULL,
+    xml text NOT NULL,
+    unread integer NOT NULL,
+    created_at timestamp NOT NULL DEFAULT now()
+);
+
+CREATE INDEX i_inbox_username ON inbox USING btree (username);
+CREATE INDEX i_inbox_username_peer ON inbox USING btree (username, peer);
+CREATE INDEX i_inbox_timestamp ON inbox USING btree (timestamp);
+
 CREATE TABLE vcard (
     username text PRIMARY KEY,
     vcard text NOT NULL,

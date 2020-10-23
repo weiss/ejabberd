@@ -36,17 +36,15 @@ and the unread count per conversation.
 Completed Tasks
 ---------------
 
-| Task                                             | Hours         | Total Hours |
-| ------------------------------------------------ | -------------:| -----------:|
-| Initial design considerations and discussions    |           2.5 |         2.5 |
-| XEP-0333 [support][X1] for `xmpp` library        |           0.5 |         3.0 |
-| Initial [import][X2] of a bare-bones `mod_inbox` |           0.5 |         3.5 |
+| Task                                              | Hours         | Total Hours |
+| ------------------------------------------------- | -------------:| -----------:|
+| Initial design considerations and discussions     |           2.5 |         2.5 |
+| XEP-0333 [support][X1] for `xmpp` library         |           0.5 |         3.0 |
+| Initial [import][X2] of a bare-bones `mod_inbox`  |           0.5 |         3.5 |
+| Add `mod_inbox_sql` for SQL storage of Inbox data |           3.0 |         6.5 |
 
 Next Tasks
 ----------
-
-- Create `mod_inbox_sql` which retrieves/stores [XEP-0430][0430] data from/to
-  SQL, one row per conversation; i.e., per local/peer JID tuple.
 
 - Teach `mod_inbox` to parse incoming messages stored in MAM. Each message
   creates or updates the corresponding database row with:
@@ -59,6 +57,15 @@ Next Tasks
 - Teach `mod_inbox` to parse [XEP-0333][0333] markers (and responses?).  If the
   stanza ID is found in the database:
   - reset the unread message count to `0`.
+
+To-Do for Upstreaming
+---------------------
+
+- Sign ProcessOne Contribution License Agreement (CLA): <https://cla.process-one.net>
+- Add `inbox` table schemas for MySQL/MariaDB, SQLite, and Microsoft SQL.
+- Implement `mod_inbox_mnesia`.
+- Implement `mod_inbox_sql:export/1` function to convert Mnesia data to SQL.
+- Add test cases for the new Inbox and push notification functionality.
 
 [1]: https://github.com/simpl0/ejabberd/issues/1
 [2]: https://github.com/simpl0/ejabberd/issues/2
