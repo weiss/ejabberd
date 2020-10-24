@@ -48,7 +48,8 @@ Next Tasks
 
 - Teach `mod_inbox` to parse incoming messages stored in MAM. Each message
   creates or updates the corresponding database row with:
-  - its [XEP-0359][0359] stanza ID (stored as a string, to support non-ejabberd remote archives),
+  - its [XEP-0359][0359] stanza ID (stored as a string, to support non-ejabberd
+    remote archives),
   - its [RFC-6120][6120] stanza ID (stored as a string),
   - the message stanza,
   - the current timestamp, and
@@ -58,10 +59,18 @@ Next Tasks
   stanza ID is found in the database:
   - reset the unread message count to `0`.
 
+- Add `get_unread_count` hook to let `mod_push` query the total number of unread
+  messages from `mod_inbox`.
+
+- Include that number with the [XEP-0357][0357] `:summary` form.
+
+- Implement caching.
+
 To-Do for Upstreaming
 ---------------------
 
 - Sign ProcessOne Contribution License Agreement (CLA): <https://cla.process-one.net>
+- Add support for remote groupchat archives.
 - Add `inbox` table schemas for MySQL/MariaDB, SQLite, and Microsoft SQL.
 - Implement `mod_inbox_mnesia`.
 - Implement `mod_inbox_sql:export/1` function to convert Mnesia data to SQL.
