@@ -31,40 +31,35 @@ Design Considerations
 
 The database layout strongly depends on the answers to these questions. For the
 moment, we'll go for a separate table which only tracks the most-recent message
-and the unread count per conversation.
+and the unread count per conversation. The unread count is reset to 0 if either
+the most-recent message is acknowledged with a `displayed` [marker][0333], or if
+an outgoing chat message is sent to the peer.
 
 Completed Tasks
 ---------------
 
-| Task                                              | Hours         | Total Hours |
-| ------------------------------------------------- | -------------:| -----------:|
-| Initial design considerations and discussions     |           2.5 |         2.5 |
-| XEP-0333 [support][X1] for `xmpp` library         |           0.5 |         3.0 |
-| Initial [import][X2] of a bare-bones `mod_inbox`  |           0.5 |         3.5 |
-| Add `mod_inbox_sql` for SQL storage of Inbox data |           3.0 |         6.5 |
+| Task                                                | Hours         | Total Hours |
+| -------------------------------------------------   | -------------:| -----------:|
+| Initial design considerations and discussions       |           2.5 |         2.5 |
+| XEP-0333 [support][X1] for `xmpp` library           |           0.5 |         3.0 |
+| Initial [import][X2] of a bare-bones `mod_inbox`    |           0.5 |         3.5 |
+| Add `mod_inbox_sql` for SQL storage of Inbox data   |           3.0 |         6.5 |
+| Let `mod_inbox` write incoming messages to Inbox    |           1.0 |         7.5 |
+| Let `mod_inbox` parse outgoing ACKs to update Inbox |           2.0 |         9.5 |
 
 Next Tasks
 ----------
-
-- Teach `mod_inbox` to parse incoming messages stored in MAM. Each message
-  creates or updates the corresponding database row with:
-  - its [XEP-0359][0359] stanza ID (stored as a string, to support non-ejabberd
-    remote archives),
-  - its [RFC-6120][6120] stanza ID (stored as a string),
-  - the message stanza,
-  - the current timestamp, and
-  - the bumped count of unread messages.
-
-- Teach `mod_inbox` to parse [XEP-0333][0333] markers (and responses?).  If the
-  stanza ID is found in the database:
-  - reset the unread message count to `0`.
 
 - Add `get_unread_count` hook to let `mod_push` query the total number of unread
   messages from `mod_inbox`.
 
 - Include that number with the [XEP-0357][0357] `:summary` form.
 
+- Test the new push notification functionality.
+
 - Implement caching.
+
+- Add ejabberd command for expiring old inbox conversations.
 
 To-Do for Upstreaming
 ---------------------

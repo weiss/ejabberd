@@ -29,8 +29,8 @@
 -behaviour(mod_inbox).
 
 %% API
--export([init/2, set/6, reset_unread/2, get_unread_total/1, remove_user/2,
-	 delete_old_inboxes/2]).
+-export([init/2, store/6, maybe_reset_unread/3, reset_unread/2,
+	 get_unread_total/1, remove_user/2, delete_old_inboxes/2]).
 
 -include_lib("xmpp/include/xmpp.hrl").
 -include("logger.hrl").
@@ -43,10 +43,10 @@
 init(_Host, _Opts) ->
     ok.
 
--spec set(jid(), jid(), binary(), binary(), integer(), message())
+-spec store(jid(), jid(), binary(), binary(), integer(), message())
       -> ok | {error, db_failure}.
-set(#jid{luser = LUser, lserver = LServer} = User,
-    Peer, MsgID, MamID, TS, Msg) ->
+store(#jid{luser = LUser, lserver = LServer} = User,
+      Peer, MsgID, MamID, TS, Msg) ->
     BarePeer = jid:encode(
 		 jid:tolower(
 		   jid:remove_resource(Peer))),
@@ -89,6 +89,30 @@ set(#jid{luser = LUser, lserver = LServer} = User,
 	    ok;
 	Err ->
 	    ?ERROR_MSG("Cannot update inbox for ~s in inbox of ~s: ~p",
+		       [jid:encode(Peer), jid:encode(User), Err]),
+	    {error, db_failure}
+    end.
+
+-spec maybe_reset_unread(jid(), jid(), binary())
+      -> boolean() | {error, db_failure}.
+maybe_reset_unread(#jid{luser = LUser, lserver = LServer} = User, Peer, ID) ->
+    BarePeer = jid:encode(
+		 jid:tolower(
+		   jid:remove_resource(Peer))),
+    case ejabberd_sql:sql_query(
+	   LServer,
+	   ?SQL("update inbox set "
+		"unread=0 "
+		"where username=%(LUser)s "
+		"and peer=%(BarePeer)s "
+		"and %(LServer)H"
+		"and (msg_id=%(ID)s or mam_id=%(ID)s)")) of
+	{updated, 1} ->
+	    true;
+	{updated, 0} ->
+	    false;
+	Err ->
+	    ?ERROR_MSG("Cannot reset counter for ~s in inbox of ~s: ~p",
 		       [jid:encode(Peer), jid:encode(User), Err]),
 	    {error, db_failure}
     end.

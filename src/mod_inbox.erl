@@ -36,7 +36,7 @@
 -export([mod_doc/0]).
 
 %% ejabberd_hooks callbacks.
--export([disco_sm_features/5]).
+-export([disco_sm_features/5, user_send_packet/1, user_receive_packet/1]).
 
 %% gen_iq_handler callback.
 -export([process_iq/1]).
@@ -47,10 +47,14 @@
 
 -define(NS_INBOX_1, <<"urn:xmpp:inbox:1">>). % TODO: Move to 'xmpp'.
 
+-type c2s_state() :: ejabberd_c2s:state().
+
 -callback init(binary(), gen_mod:opts())
           -> any().
--callback set(jid(), jid(), binary(), binary(), integer(), message())
+-callback store(jid(), jid(), binary(), binary(), integer(), message())
           -> ok | {error, db_failure}.
+-callback maybe_reset_unread(jid(), jid(), binary())
+          -> boolean() | {error, db_failure}.
 -callback reset_unread(jid(), jid())
           -> ok | {error, db_failure}.
 -callback get_unread_total(jid())
@@ -134,12 +138,20 @@ mod_doc() ->
 -spec register_hooks(binary()) -> ok.
 register_hooks(Host) ->
     ejabberd_hooks:add(disco_sm_features, Host, ?MODULE,
-		       disco_sm_features, 50).
+		       disco_sm_features, 50),
+    ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
+		       user_send_packet, 100),
+    ejabberd_hooks:add(user_receive_packet, Host, ?MODULE,
+		       user_receive_packet, 100).
 
 -spec unregister_hooks(binary()) -> ok.
 unregister_hooks(Host) ->
     ejabberd_hooks:delete(disco_sm_features, Host, ?MODULE,
-			  disco_sm_features, 50).
+			  disco_sm_features, 50),
+    ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
+			  user_send_packet, 100),
+    ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
+			  user_receive_packet, 100).
 
 %%--------------------------------------------------------------------
 %% Service discovery.
@@ -183,3 +195,101 @@ process_iq(#iq{type = get,
 	       lang = Lang} = IQ) ->
     Txt = ?T("The query is only allowed from local users"),
     xmpp:make_error(IQ, xmpp:err_not_allowed(Txt, Lang)).
+
+%%--------------------------------------------------------------------
+%% Hook callbacks.
+%%--------------------------------------------------------------------
+-spec user_send_packet(Acc) -> Acc
+      when Acc :: {stanza() | drop, c2s_state()}.
+user_send_packet({#message{to = Peer} = Msg, #{jid := JID}} = Acc) ->
+    case find_marker(Msg) of
+	{displayed, ID} ->
+	    case maybe_reset_unread(JID, Peer, ID) of
+		true ->
+		    ?DEBUG("Reset unread count for ~s with ~s (ID: ~s)",
+			   [jid:encode(JID), jid:encode(Peer), ID]);
+		_ -> % Either false or {error, _}, the latter was logged.
+		    ?DEBUG("Message not found for ~s with ~s (ID: ~s)",
+			   [jid:encode(JID), jid:encode(Peer), ID])
+	    end;
+	none ->
+	    case is_instant_msg(Msg) of
+		true ->
+		    ?DEBUG("Reset unread count for ~s with ~s",
+			   [jid:encode(JID), jid:encode(Peer)]),
+		    reset_unread(JID, Peer);
+		false ->
+		    ?DEBUG("Won't reset unread count for ~s with ~s",
+			   [jid:encode(JID), jid:encode(Peer)])
+	    end
+    end,
+    Acc;
+user_send_packet(Acc) ->
+    Acc.
+
+-spec user_receive_packet(Acc) -> Acc
+      when Acc :: {stanza() | drop, c2s_state()}.
+user_receive_packet({#message{from = Peer, id = MsgID,
+			      meta = #{mam_archived := true,
+				       stanza_id := MamID}} = Msg,
+		     #{jid := JID}} = Acc) ->
+    case is_instant_msg(Msg) of
+	true ->
+
+	    ?DEBUG("Adding message from ~s to inbox of ~s",
+		   [jid:encode(Peer), jid:encode(JID)]),
+	    _ = store(JID, Peer, MsgID, MamID, Msg); % Any errors were logged.
+	false ->
+	    ?DEBUG("Won't add message from ~s to inbox of ~s",
+		   [jid:encode(Peer), jid:encode(JID)])
+    end,
+    Acc;
+user_receive_packet(Acc) ->
+    Acc.
+
+%%--------------------------------------------------------------------
+%% Internal functions.
+%%--------------------------------------------------------------------
+-spec store(jid(), jid(), binary(), integer(), message())
+      -> ok | {error, db_failure}.
+store(#jid{lserver = LServer} = JID, Peer, MsgID, MamID, Msg) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:store(JID, Peer, MsgID, integer_to_binary(MamID), _TS = MamID, Msg).
+
+-spec find_marker(message()) -> {displayed, binary()} | none.
+find_marker(Msg) ->
+    case xmpp:get_subtag(Msg, #mark_displayed{}) of
+	#mark_displayed{id = ID} ->
+	    {displayed, ID};
+	false ->
+	    none
+    end.
+
+-spec maybe_reset_unread(jid(), jid(), binary())
+      -> boolean() | {error, db_failure}.
+maybe_reset_unread(#jid{lserver = LServer} = JID, Peer, ID) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:maybe_reset_unread(JID, Peer, ID).
+
+-spec reset_unread(jid(), jid()) -> ok | {error, db_failure}.
+reset_unread(#jid{lserver = LServer} = JID, Peer) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:reset_unread(JID, Peer).
+
+-spec is_instant_msg(message()) -> boolean().
+is_instant_msg(#message{body = Body} = Msg) ->
+    case xmpp:get_text(Body) of
+	Text when byte_size(Text) > 0 ->
+	    true;
+	<<>> ->
+	    body_is_encrypted(Msg)
+    end.
+
+-spec body_is_encrypted(message()) -> boolean().
+body_is_encrypted(#message{sub_els = MsgEls}) ->
+    case lists:keyfind(<<"encrypted">>, #xmlel.name, MsgEls) of
+	#xmlel{children = EncEls} ->
+	    lists:keyfind(<<"payload">>, #xmlel.name, EncEls) /= false;
+	false ->
+	    false
+    end.
