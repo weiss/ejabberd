@@ -128,6 +128,8 @@ depends(_Host, _Opts) ->
     [].
 
 -spec mod_opt_type(atom()) -> econf:validator().
+mod_opt_type(include_count) ->
+    econf:bool();
 mod_opt_type(include_sender) ->
     econf:bool();
 mod_opt_type(include_body) ->
@@ -147,7 +149,8 @@ mod_opt_type(cache_life_time) ->
 
 -spec mod_options(binary()) -> [{atom(), any()}].
 mod_options(Host) ->
-    [{include_sender, false},
+    [{include_count, true},
+     {include_sender, false},
      {include_body, <<"New message">>},
      {db_type, ejabberd_config:default_db(Host, ?MODULE)},
      {use_cache, ejabberd_option:use_cache(Host)},
@@ -168,7 +171,16 @@ mod_doc() ->
              "notification delivery to the user's mobile device using "
              "platform-dependant backend services such as FCM or APNS."),
       opts =>
-          [{include_sender,
+          [{include_count,
+            #{value => "true | false",
+              desc =>
+                  ?T("If this option is set to 'true', the number of unread "
+                     "messages is included with push notifications generated "
+                     "for incoming messages with a body. (This functionality "
+                     "depends on 'mod_inbox' being enabled. If it isn't, this "
+                     "option is ignored.) "
+                     "The default value is 'true'.")}},
+           {include_sender,
             #{value => "true | false",
               desc =>
                   ?T("If this option is set to 'true', the sender's JID "
@@ -684,31 +696,43 @@ drop_online_sessions(LUser, LServer, Clients) ->
 
 -spec make_summary(binary(), xmpp_element() | xmlel() | none, direction())
       -> xdata() | undefined.
-make_summary(Host, #message{from = From} = Pkt, recv) ->
+make_summary(Host, #message{from = From, to = JID} = Pkt, recv) ->
     case {mod_push_opt:include_sender(Host),
-	  mod_push_opt:include_body(Host)} of
-	{false, false} ->
+	  mod_push_opt:include_body(Host),
+	  mod_push_opt:include_count(Host)} of
+	{false, false, false} ->
 	    undefined;
-	{IncludeSender, IncludeBody} ->
+	{IncludeSender, IncludeBody, IncludeCount} ->
 	    case get_body_text(Pkt) of
 		none ->
 		    undefined;
 		Text ->
-		    Fields1 = case IncludeBody of
-				  StaticText when is_binary(StaticText) ->
-				      [{'last-message-body', StaticText}];
-				  true ->
-				      [{'last-message-body', Text}];
-				  false ->
-				      []
-			      end,
-		    Fields2 = case IncludeSender of
-				  true ->
-				      [{'last-message-sender', From} | Fields1];
-				  false ->
-				      Fields1
-			      end,
-		    #xdata{type = submit, fields = push_summary:encode(Fields2)}
+		    F1 = case IncludeBody of
+			     StaticText when is_binary(StaticText) ->
+				 [{'last-message-body', StaticText}];
+			     true ->
+				 [{'last-message-body', Text}];
+			     false ->
+				 []
+			 end,
+		    F2 = case IncludeSender of
+			     true ->
+				 [{'last-message-sender', From} | F1];
+			     false ->
+				 F1
+			 end,
+		    F3 = case IncludeCount of
+			     true ->
+				 case get_unread_count(JID) of
+				     {count, Count} ->
+					 [{'message-count', Count} | F2];
+				     undefined ->
+					 F2
+				 end;
+			     false ->
+				 F2
+			 end,
+		    #xdata{type = submit, fields = push_summary:encode(F3)}
 	    end
     end;
 make_summary(_Host, _Pkt, _Dir) ->
@@ -729,6 +753,16 @@ get_direction(#message{}) ->
     recv;
 get_direction(_Stanza) ->
     undefined.
+
+-spec get_unread_count(jid()) -> {count, non_neg_integer()} | undefined.
+get_unread_count(#jid{lserver = LServer} = JID) ->
+    case ejabberd_hooks:run_fold(unread_message_count, LServer,
+				 undefined, [JID]) of
+	Count when is_integer(Count), Count >= 0 ->
+	    {count, Count};
+	undefined ->
+	    undefined
+    end.
 
 -spec get_body_text(message()) -> binary() | none.
 get_body_text(#message{body = Body} = Msg) ->

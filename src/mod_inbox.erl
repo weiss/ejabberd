@@ -36,7 +36,8 @@
 -export([mod_doc/0]).
 
 %% ejabberd_hooks callbacks.
--export([disco_sm_features/5, user_send_packet/1, user_receive_packet/1]).
+-export([disco_sm_features/5, user_send_packet/1, user_receive_packet/1,
+	 unread_message_count/2]).
 
 %% gen_iq_handler callback.
 -export([process_iq/1]).
@@ -142,7 +143,9 @@ register_hooks(Host) ->
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 100),
     ejabberd_hooks:add(user_receive_packet, Host, ?MODULE,
-		       user_receive_packet, 100).
+		       user_receive_packet, 100),
+    ejabberd_hooks:add(unread_message_count, Host, ?MODULE,
+		       unread_message_count, 50).
 
 -spec unregister_hooks(binary()) -> ok.
 unregister_hooks(Host) ->
@@ -151,7 +154,9 @@ unregister_hooks(Host) ->
     ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
 			  user_send_packet, 100),
     ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
-			  user_receive_packet, 100).
+			  user_receive_packet, 100),
+    ejabberd_hooks:delete(unread_message_count, Host, ?MODULE,
+			  unread_message_count, 50).
 
 %%--------------------------------------------------------------------
 %% Service discovery.
@@ -246,6 +251,17 @@ user_receive_packet({#message{from = Peer, id = MsgID,
     Acc;
 user_receive_packet(Acc) ->
     Acc.
+
+-spec unread_message_count(non_neg_integer() | undefined, jid())
+      -> {stop, non_neg_integer()} | undefined.
+unread_message_count(_Acc, #jid{lserver = LServer} = JID) ->
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    case Mod:get_unread_total(JID) of
+	{unread, Count} ->
+	    {stop, Count};
+	{error, db_failure} -> % Error was logged.
+	    undefined
+    end.
 
 %%--------------------------------------------------------------------
 %% Internal functions.

@@ -6,9 +6,7 @@ To-Do
 
 1. Issue [#1][1]: Include an unread `message-count` with the [XEP-0357][0357]
    `:summary` form.
-
 2. Issue [#2][2]: Support [XEP-0430][0430]: Inbox.
-
 3. Possibly add support for acknowledging outgoing messages with the
    [XEP-0359][0359] stanza ID.
 
@@ -17,23 +15,20 @@ Design Considerations
 
 - The unread message count included with push notifications should use the data
   gathered for Inbox support, so the first step is gathering that data.
-
 - Main question is whether to store that Inbox data within the (MAM) `archive`
   or in a separate table.
-
 - Another question is whether to support marking _parts_ of a conversation as
   read: If there's four unread messages and a [chat marker][0333] acknowledges
   only the older two of those, should the unread message count be updated from
   `4` to `2`, or is it acceptable for the count to remain at `4` (as this might
   be a rare corner case in practice)?
-
 - And (how to) support remote MUC/MIX archives.
 
 The database layout strongly depends on the answers to these questions. For the
 moment, we'll go for a separate table which only tracks the most-recent message
-and the unread count per conversation. The unread count is reset to 0 if either
-the most-recent message is acknowledged with a `displayed` [marker][0333], or if
-an outgoing chat message is sent to the peer.
+and the unread count per conversation. The unread count is reset to `0` if
+either the most-recent message is acknowledged with a `displayed`
+[marker][0333], or if an outgoing chat message is sent to the peer.
 
 Completed Tasks
 ---------------
@@ -46,20 +41,15 @@ Completed Tasks
 | Add `mod_inbox_sql` for SQL storage of Inbox data   |           3.0 |         6.5 |
 | Let `mod_inbox` write incoming messages to Inbox    |           1.0 |         7.5 |
 | Let `mod_inbox` parse outgoing ACKs to update Inbox |           2.0 |         9.5 |
+| Let `mod_push` include number unread messages       |           1.0 |        10.5 |
 
 Next Tasks
 ----------
 
-- Add `get_unread_count` hook to let `mod_push` query the total number of unread
-  messages from `mod_inbox`.
-
-- Include that number with the [XEP-0357][0357] `:summary` form.
-
-- Test the new push notification functionality.
-
 - Implement caching.
-
+- Test the new push notification functionality.
 - Add ejabberd command for expiring old inbox conversations.
+- Close issue [#1][1] and start working on issue [#2][2].
 
 To-Do for Upstreaming
 ---------------------

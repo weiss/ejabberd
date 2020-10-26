@@ -8,6 +8,7 @@
 -export([cache_size/1]).
 -export([db_type/1]).
 -export([include_body/1]).
+-export([include_count/1]).
 -export([include_sender/1]).
 -export([use_cache/1]).
 
@@ -40,6 +41,12 @@ include_body(Opts) when is_map(Opts) ->
     gen_mod:get_opt(include_body, Opts);
 include_body(Host) ->
     gen_mod:get_module_opt(Host, mod_push, include_body).
+
+-spec include_count(gen_mod:opts() | global | binary()) -> boolean().
+include_count(Opts) when is_map(Opts) ->
+    gen_mod:get_opt(include_count, Opts);
+include_count(Host) ->
+    gen_mod:get_module_opt(Host, mod_push, include_count).
 
 -spec include_sender(gen_mod:opts() | global | binary()) -> boolean().
 include_sender(Opts) when is_map(Opts) ->
