@@ -37,7 +37,7 @@
 
 %% ejabberd_hooks callbacks.
 -export([disco_sm_features/5, user_send_packet/1, user_receive_packet/1,
-	 unread_message_count/2]).
+	 unread_message_count/2, remove_user/2]).
 
 %% gen_iq_handler callback.
 -export([process_iq/1]).
@@ -46,6 +46,7 @@
 -include("translate.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
 
+-define(INBOX_COUNTER_CACHE, inbox_counter_cache).
 -define(NS_INBOX_1, <<"urn:xmpp:inbox:1">>). % TODO: Move to 'xmpp'.
 
 -type c2s_state() :: ejabberd_c2s:state().
@@ -69,9 +70,16 @@
 %% gen_mod callbacks.
 %%--------------------------------------------------------------------
 -spec start(binary(), gen_mod:opts()) -> ok.
-start(Host, _Opts) ->
-    register_iq_handlers(Host),
-    register_hooks(Host).
+start(Host, Opts) ->
+    Mod = gen_mod:db_mod(Opts, ?MODULE),
+    case Mod:init(Host, Opts) of
+	ok ->
+	    init_cache(Mod, Host, Opts),
+	    register_iq_handlers(Host),
+	    register_hooks(Host);
+	Err ->
+	    Err
+    end.
 
 -spec stop(binary()) -> ok.
 stop(Host) ->
@@ -93,8 +101,6 @@ mod_opt_type(use_cache) ->
     econf:bool();
 mod_opt_type(cache_size) ->
     econf:pos_int(infinity);
-mod_opt_type(cache_missed) ->
-    econf:bool();
 mod_opt_type(cache_life_time) ->
     econf:timeout(second, infinity).
 
@@ -103,7 +109,6 @@ mod_options(Host) ->
     [{db_type, ejabberd_config:default_db(Host, ?MODULE)}, % TODO: Support Mnesia.
      {use_cache, ejabberd_option:use_cache(Host)},         % TODO: Support caching.
      {cache_size, ejabberd_option:cache_size(Host)},
-     {cache_missed, ejabberd_option:cache_missed(Host)},
      {cache_life_time, ejabberd_option:cache_life_time(Host)}].
 
 mod_doc() ->
@@ -124,10 +129,6 @@ mod_doc() ->
 	    #{value => "pos_integer() | infinity",
 	      desc =>
 		  ?T("Same as top-level 'cache_size' option, but applied to this module only.")}},
-	   {cache_missed,
-	    #{value => "true | false",
-	      desc =>
-		  ?T("Same as top-level 'cache_missed' option, but applied to this module only.")}},
 	   {cache_life_time,
 	    #{value => "timeout()",
 	      desc =>
@@ -240,7 +241,6 @@ user_receive_packet({#message{from = Peer, id = MsgID,
 		     #{jid := JID}} = Acc) ->
     case is_instant_msg(Msg) of
 	true ->
-
 	    ?DEBUG("Adding message from ~s to inbox of ~s",
 		   [jid:encode(Peer), jid:encode(JID)]),
 	    _ = store(JID, Peer, MsgID, MamID, Msg); % Any errors were logged.
@@ -253,23 +253,52 @@ user_receive_packet(Acc) ->
     Acc.
 
 -spec unread_message_count(non_neg_integer() | undefined, jid())
-      -> {stop, non_neg_integer()} | undefined.
-unread_message_count(_Acc, #jid{lserver = LServer} = JID) ->
+      -> non_neg_integer() | undefined.
+unread_message_count(_Acc, #jid{luser = LUser, lserver = LServer} = JID) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
-    case Mod:get_unread_total(JID) of
-	{unread, Count} ->
-	    {stop, Count};
-	{error, db_failure} -> % Error was logged.
-	    undefined
+    case use_cache(Mod, LServer) of
+	true ->
+	    ets_cache:lookup(
+	      ?INBOX_COUNTER_CACHE, {LUser, LServer},
+	      fun() ->
+		      case Mod:get_unread_total(JID) of
+			  {unread, Count} ->
+			      {cache, Count};
+			  {error, db_failure} -> % Error was logged.
+			      {nocache, undefined}
+		      end
+	      end);
+	false ->
+	    case Mod:get_unread_total(JID) of
+		{unread, Count} ->
+		    Count;
+		{error, db_failure} -> % Error was logged.
+		    undefined
+	    end
     end.
+
+-spec remove_user(binary(), binary()) -> ok.
+remove_user(User, Server) ->
+    LUser = jid:nodeprep(User),
+    LServer = jid:nameprep(Server),
+    Mod = gen_mod:db_mod(LServer, ?MODULE),
+    Mod:remove_user(LUser, LServer),
+    flush_cache(Mod, LUser, LServer).
 
 %%--------------------------------------------------------------------
 %% Internal functions.
 %%--------------------------------------------------------------------
 -spec store(jid(), jid(), binary(), integer(), message())
       -> ok | {error, db_failure}.
-store(#jid{lserver = LServer} = JID, Peer, MsgID, MamID, Msg) ->
+store(#jid{luser = LUser, lserver = LServer} = JID, Peer, MsgID, MamID, Msg) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
+    case use_cache(Mod, LServer) of
+	true ->
+	    ets_cache:incr(?INBOX_COUNTER_CACHE, {LUser, LServer}, 1,
+			   cache_nodes(Mod, LServer));
+	false ->
+	    ok
+    end,
     Mod:store(JID, Peer, MsgID, integer_to_binary(MamID), _TS = MamID, Msg).
 
 -spec find_marker(message()) -> {displayed, binary()} | none.
@@ -283,13 +312,20 @@ find_marker(Msg) ->
 
 -spec maybe_reset_unread(jid(), jid(), binary())
       -> boolean() | {error, db_failure}.
-maybe_reset_unread(#jid{lserver = LServer} = JID, Peer, ID) ->
+maybe_reset_unread(#jid{luser = LUser, lserver = LServer} = JID, Peer, ID) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
-    Mod:maybe_reset_unread(JID, Peer, ID).
+    case Mod:maybe_reset_unread(JID, Peer, ID) of
+	true ->
+	    flush_cache(Mod, LUser, LServer),
+	    true;
+	Result ->
+	    Result
+    end.
 
 -spec reset_unread(jid(), jid()) -> ok | {error, db_failure}.
-reset_unread(#jid{lserver = LServer} = JID, Peer) ->
+reset_unread(#jid{luser = LUser, lserver = LServer} = JID, Peer) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
+    flush_cache(Mod, LUser, LServer),
     Mod:reset_unread(JID, Peer).
 
 -spec is_instant_msg(message()) -> boolean().
@@ -309,3 +345,49 @@ body_is_encrypted(#message{sub_els = MsgEls}) ->
 	false ->
 	    false
     end.
+
+%%--------------------------------------------------------------------
+%% Caching.
+%%--------------------------------------------------------------------
+-spec use_cache(module(), binary()) -> boolean().
+use_cache(Mod, Host) ->
+    case erlang:function_exported(Mod, use_cache, 2) of
+	true ->
+	    Mod:use_cache(Host);
+	false ->
+	    mod_inbox_opt:use_cache(Host)
+    end.
+
+-spec init_cache(module(), binary(), gen_mod:opts()) -> any().
+init_cache(Mod, Host, Opts) ->
+    case use_cache(Mod, Host) of
+	true ->
+	    ets_cache:new(?INBOX_COUNTER_CACHE, cache_opts(Opts));
+	false ->
+	    ets_cache:delete(?INBOX_COUNTER_CACHE)
+    end.
+
+-spec cache_nodes(module(), binary()) -> [node()].
+cache_nodes(Mod, Host) ->
+    case erlang:function_exported(Mod, cache_nodes, 1) of
+	true ->
+	    Mod:cache_nodes(Host);
+	false ->
+	    ejabberd_cluster:get_nodes()
+    end.
+
+-spec flush_cache(module(), binary(), binary()) -> ok.
+flush_cache(Mod, LUser, LServer) ->
+    case use_cache(Mod, LServer) of
+	true ->
+	    ets_cache:delete(?INBOX_COUNTER_CACHE, {LUser, LServer},
+			     cache_nodes(Mod, LServer));
+	false ->
+	    ok
+    end.
+
+-spec cache_opts(gen_mod:opts()) -> proplists:proplist().
+cache_opts(Opts) ->
+    MaxSize = mod_inbox_opt:cache_size(Opts),
+    LifeTime = mod_inbox_opt:cache_life_time(Opts),
+    [{max_size, MaxSize}, {life_time, LifeTime}, {cache_missed, false}].

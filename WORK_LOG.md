@@ -42,11 +42,11 @@ Completed Tasks
 | Let `mod_inbox` write incoming messages to Inbox    |           1.0 |         7.5 |
 | Let `mod_inbox` parse outgoing ACKs to update Inbox |           2.0 |         9.5 |
 | Let `mod_push` include number unread messages       |           1.0 |        10.5 |
+| Implement caching                                   |           1.5 |        12.0 |
 
 Next Tasks
 ----------
 
-- Implement caching.
 - Test the new push notification functionality.
 - Add ejabberd command for expiring old inbox conversations.
 - Close issue [#1][1] and start working on issue [#2][2].

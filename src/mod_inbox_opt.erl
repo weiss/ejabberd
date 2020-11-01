@@ -4,7 +4,6 @@
 -module(mod_inbox_opt).
 
 -export([cache_life_time/1]).
--export([cache_missed/1]).
 -export([cache_size/1]).
 -export([db_type/1]).
 -export([use_cache/1]).
@@ -14,12 +13,6 @@ cache_life_time(Opts) when is_map(Opts) ->
     gen_mod:get_opt(cache_life_time, Opts);
 cache_life_time(Host) ->
     gen_mod:get_module_opt(Host, mod_inbox, cache_life_time).
-
--spec cache_missed(gen_mod:opts() | global | binary()) -> boolean().
-cache_missed(Opts) when is_map(Opts) ->
-    gen_mod:get_opt(cache_missed, Opts);
-cache_missed(Host) ->
-    gen_mod:get_module_opt(Host, mod_inbox, cache_missed).
 
 -spec cache_size(gen_mod:opts() | global | binary()) -> 'infinity' | pos_integer().
 cache_size(Opts) when is_map(Opts) ->
