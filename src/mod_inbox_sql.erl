@@ -144,10 +144,10 @@ reset_unread(#jid{luser = LUser, lserver = LServer} = User, Peer) ->
 get_unread_total(#jid{luser = LUser, lserver = LServer} = User) ->
     case ejabberd_sql:sql_query(
 	   LServer,
-	   ?SQL("select @(sum(unread))d from inbox "
+	   ?SQL("select @(unread)d from inbox "
 		"where username=%(LUser)s and %(LServer)H")) of
-	{selected, [{Count}]} ->
-	    {unread, Count};
+	{selected, Counts} ->
+	    {unread, lists:foldl(fun({X}, Sum) -> Sum + X end, 0, Counts)};
 	Err ->
 	    ?ERROR_MSG("Cannot retrieve unread message count of ~s: ~p",
 		       [jid:encode(User), Err]),
