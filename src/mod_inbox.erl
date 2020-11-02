@@ -36,7 +36,7 @@
 -export([mod_doc/0]).
 
 %% ejabberd_hooks callbacks.
--export([disco_sm_features/5, user_send_packet/1, user_receive_packet/1,
+-export([disco_sm_features/5, user_send_packet/1, store_mam_message/7,
 	 unread_message_count/2, remove_user/2]).
 
 %% gen_iq_handler callback.
@@ -141,10 +141,10 @@ mod_doc() ->
 register_hooks(Host) ->
     ejabberd_hooks:add(disco_sm_features, Host, ?MODULE,
 		       disco_sm_features, 50),
+    ejabberd_hooks:add(store_mam_message, Host, ?MODULE,
+		       store_mam_message, 105),
     ejabberd_hooks:add(user_send_packet, Host, ?MODULE,
 		       user_send_packet, 100),
-    ejabberd_hooks:add(user_receive_packet, Host, ?MODULE,
-		       user_receive_packet, 100),
     ejabberd_hooks:add(unread_message_count, Host, ?MODULE,
 		       unread_message_count, 50).
 
@@ -152,10 +152,10 @@ register_hooks(Host) ->
 unregister_hooks(Host) ->
     ejabberd_hooks:delete(disco_sm_features, Host, ?MODULE,
 			  disco_sm_features, 50),
+    ejabberd_hooks:delete(store_mam_message, Host, ?MODULE,
+			  store_mam_message, 105),
     ejabberd_hooks:delete(user_send_packet, Host, ?MODULE,
 			  user_send_packet, 100),
-    ejabberd_hooks:delete(user_receive_packet, Host, ?MODULE,
-			  user_receive_packet, 100),
     ejabberd_hooks:delete(unread_message_count, Host, ?MODULE,
 			  unread_message_count, 50).
 
@@ -233,12 +233,12 @@ user_send_packet({#message{to = Peer} = Msg, #{jid := JID}} = Acc) ->
 user_send_packet(Acc) ->
     Acc.
 
--spec user_receive_packet(Acc) -> Acc
-      when Acc :: {stanza() | drop, c2s_state()}.
-user_receive_packet({#message{from = Peer, id = MsgID,
-			      meta = #{mam_archived := true,
-				       stanza_id := MamID}} = Msg,
-		     #{jid := JID}} = Acc) ->
+-spec store_mam_message(Acc, binary(), binary(), jid(), binary(),
+			chat | groupchat, recv | send)
+      -> Acc when Acc :: message() | drop.
+store_mam_message(#message{id = MsgID, meta = #{stanza_id := MamID}} = Msg,
+		  LUser, LServer, Peer, _Nick, chat, recv) ->
+    JID = jid:make(LUser, LServer),
     case is_instant_msg(Msg) of
 	true ->
 	    ?DEBUG("Adding message from ~s to inbox of ~s",
@@ -248,8 +248,8 @@ user_receive_packet({#message{from = Peer, id = MsgID,
 	    ?DEBUG("Won't add message from ~s to inbox of ~s",
 		   [jid:encode(Peer), jid:encode(JID)])
     end,
-    Acc;
-user_receive_packet(Acc) ->
+    Msg;
+store_mam_message(Acc, _LUser, _LServer, _Peer, _Nick, _Type, _Dir) ->
     Acc.
 
 -spec unread_message_count(non_neg_integer() | undefined, jid())
