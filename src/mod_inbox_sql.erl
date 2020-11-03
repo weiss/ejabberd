@@ -160,10 +160,17 @@ remove_user(LUser, LServer) ->
       LServer,
       ?SQL("delete from inbox where username=%(LUser)s and %(LServer)H")).
 
--spec delete_old_inboxes(binary(), integer()) -> any().
+-spec delete_old_inboxes(binary(), integer()) -> ok | {error, db_failure}.
 delete_old_inboxes(LServer, TS) ->
-    ejabberd_sql:sql_query(
-      LServer,
-      ?SQL("delete from archive where timestamp < %(TS)d and %(LServer)H")).
+    case ejabberd_sql:sql_query(
+	   LServer,
+	   ?SQL("delete from inbox where timestamp < %(TS)d "
+		"and %(LServer)H")) of
+	{updated, _} ->
+	    ok;
+	Err ->
+	    ?ERROR_MSG("Cannot delete expired inboxes: ~p", [Err]),
+	    {error, db_failure}
+    end.
 
 %% TODO: Implement Mnesia export/1.

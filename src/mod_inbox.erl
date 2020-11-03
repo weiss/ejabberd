@@ -42,8 +42,12 @@
 %% gen_iq_handler callback.
 -export([process_iq/1]).
 
+%% ejabberd command.
+-export([get_commands_spec/0, delete_old_inboxes/1]).
+
 -include("logger.hrl").
 -include("translate.hrl").
+-include("ejabberd_commands.hrl").
 -include_lib("xmpp/include/xmpp.hrl").
 
 -define(INBOX_COUNTER_CACHE, inbox_counter_cache).
@@ -64,7 +68,7 @@
 -callback remove_user(binary(), binary())
           -> any().
 -callback delete_old_inboxes(binary() | global, integer())
-          -> any().
+          -> ok | {error, db_failure}.
 
 %%--------------------------------------------------------------------
 %% gen_mod callbacks.
@@ -76,7 +80,8 @@ start(Host, Opts) ->
 	ok ->
 	    init_cache(Mod, Host, Opts),
 	    register_iq_handlers(Host),
-	    register_hooks(Host);
+	    register_hooks(Host),
+	    ejabberd_commands:register_commands(get_commands_spec());
 	Err ->
 	    Err
     end.
@@ -84,7 +89,13 @@ start(Host, Opts) ->
 -spec stop(binary()) -> ok.
 stop(Host) ->
     unregister_hooks(Host),
-    unregister_iq_handlers(Host).
+    unregister_iq_handlers(Host),
+    case gen_mod:is_loaded_elsewhere(Host, ?MODULE) of
+	false ->
+	    ejabberd_commands:unregister_commands(get_commands_spec());
+	true ->
+	    ok
+    end.
 
 -spec reload(binary(), gen_mod:opts(), gen_mod:opts()) -> ok.
 reload(_Host, _NewOpts, _OldOpts) ->
@@ -284,6 +295,51 @@ remove_user(User, Server) ->
     Mod = gen_mod:db_mod(LServer, ?MODULE),
     Mod:remove_user(LUser, LServer),
     flush_cache(Mod, LUser, LServer).
+
+%%--------------------------------------------------------------------
+%% ejabberd command callbacks.
+%%--------------------------------------------------------------------
+-spec get_commands_spec() -> [ejabberd_commands()].
+get_commands_spec() ->
+    [#ejabberd_commands{name = delete_old_inboxes, tags = [purge],
+			desc = "Remove inbox entries older than DAYS",
+			module = ?MODULE, function = delete_old_inboxes,
+			args = [{days, integer}],
+			result = {res, rescode}}].
+
+-spec delete_old_inboxes(integer()) -> ok | {error, term()}.
+delete_old_inboxes(Days) ->
+    Diff = Days * 24 * 60 * 60 * 1000000,
+    case erlang:system_time(microsecond) - Diff of
+	TS when TS > 0 ->
+	    DBTypes = lists:usort(
+			lists:map(
+			  fun(Host) ->
+				  case mod_inbox_opt:db_type(Host) of
+				      sql ->
+					  {sql, Host};
+				      Other ->
+					  {Other, global}
+				  end
+			  end, ejabberd_option:hosts())),
+	    Results = lists:map(
+			fun({DBType, Host}) ->
+				Mod = gen_mod:db_mod(DBType, ?MODULE),
+				Mod:delete_old_inboxes(Host, TS)
+			end, DBTypes),
+	    ets_cache:clear(?INBOX_COUNTER_CACHE, ejabberd_cluster:get_nodes()),
+	    case lists:filter(fun(Res) -> Res /= ok end, Results) of
+		[] ->
+		    ?INFO_MSG("Deleted entries older than ~B days", [Days]),
+		    ok;
+		[{error, Reason} | _] ->
+		    ?ERROR_MSG("Error deleting old entries: ~p", [Reason]),
+		    Reason
+	    end;
+	TS when TS =< 0 ->
+	    ?ERROR_MSG("Cannot delete entries older than ~B days", [Days]),
+	    badarg
+    end.
 
 %%--------------------------------------------------------------------
 %% Internal functions.
