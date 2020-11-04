@@ -98,7 +98,15 @@ stop(Host) ->
     end.
 
 -spec reload(binary(), gen_mod:opts(), gen_mod:opts()) -> ok.
-reload(_Host, _NewOpts, _OldOpts) ->
+reload(Host, NewOpts, OldOpts) ->
+    NewMod = gen_mod:db_mod(NewOpts, ?MODULE),
+    OldMod = gen_mod:db_mod(OldOpts, ?MODULE),
+    if NewMod /= OldMod ->
+	    NewMod:init(Host, NewOpts);
+       true ->
+	    ok
+    end,
+    init_cache(NewMod, Host, NewOpts),
     ok.
 
 -spec depends(binary(), gen_mod:opts()) -> [{module(), hard | soft}].
