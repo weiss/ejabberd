@@ -36,8 +36,8 @@ Completed Tasks
 | Task                                                | Hours         | Total Hours |
 | -------------------------------------------------   | -------------:| -----------:|
 | Initial design considerations and discussions       |           2.5 |         2.5 |
-| XEP-0333 [support][X1] for `xmpp` library           |           0.5 |         3.0 |
-| Initial [import][X2] of a bare-bones `mod_inbox`    |           0.5 |         3.5 |
+| XEP-0333 support for `xmpp` library                 |           0.5 |         3.0 |
+| Initial import of a bare-bones `mod_inbox`          |           0.5 |         3.5 |
 | Add `mod_inbox_sql` for SQL storage of Inbox data   |           3.0 |         6.5 |
 | Let `mod_inbox` write incoming messages to Inbox    |           1.0 |         7.5 |
 | Let `mod_inbox` parse outgoing ACKs to update Inbox |           2.0 |         9.5 |
@@ -45,17 +45,22 @@ Completed Tasks
 | Implement caching                                   |           1.5 |        12.0 |
 | Test the new functionality and fix issues           |           1.0 |        13.0 |
 | Add API call for expiring old inboxes               |           0.5 |        13.5 |
+| XEP-0430 support for `xmpp` library                 |           1.0 |        14.5 |
 
 Next Tasks
 ----------
 
-- Close issue [#1][1] and start working on issue [#2][2].
+- Parse incoming [XEP-0430][0430] query (with optional RSM filter).
+- Create and send a dummy response.
+- Add required SELECT queries to `mod_inbox_sql`.
+- Create and send correct response.
+- Test the new Inbox functionality and fix any issues.
 
 To-Do for Upstreaming
 ---------------------
 
 - Sign ProcessOne Contribution License Agreement (CLA): <https://cla.process-one.net>
-- Add support for remote groupchat archives.
+- Add support for (remote) groupchat archives.
 - Add `inbox` table schemas for MySQL/MariaDB, SQLite, and Microsoft SQL.
 - Implement `mod_inbox_mnesia`.
 - Implement `mod_inbox_sql:export/1` function to convert Mnesia data to SQL.
@@ -70,6 +75,3 @@ To-Do for Upstreaming
 [0430]: https://xmpp.org/extensions/xep-0430.html
 
 [6120]: https://xmpp.org/rfcs/rfc6120.html
-
-[X1]: https://github.com/simpl0/xmpp/commit/c48f6cb9f9cc419844c789ec47a79003aecb1814
-[X2]: https://github.com/simpl0/ejabberd/commit/f63673b96f21e0612e145fe7deeb74e8bdacecf1

@@ -51,7 +51,6 @@
 -include_lib("xmpp/include/xmpp.hrl").
 
 -define(INBOX_COUNTER_CACHE, inbox_counter_cache).
--define(NS_INBOX_1, <<"urn:xmpp:inbox:1">>). % TODO: Move to 'xmpp'.
 
 -type c2s_state() :: ejabberd_c2s:state().
 
