@@ -29,11 +29,11 @@ jobs:
           path: ~/build/
           key: 1-${{runner.os}}-ct-ng-1.25.0-RC1
       - name: get refvar
-        run: echo "refvar is: $GITHUB_REF"
+        run: echo $GITHUB_REF
       - name: get reftype
-        run: echo "reftype is: $GITHUB_REF_TYPE"
+        run: echo $GITHUB_REF_TYPE
       - name: get ref
-        run: echo "ref is: ${{ github.ref }}"
+        run: echo ${{ github.ref }}
       - name: Install prerequisites
         run: |
           sudo apt-get -qq update
