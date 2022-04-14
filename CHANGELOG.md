@@ -1,3 +1,7 @@
+# Version 22.02
+
+This is just another dummy version for testing github actions.
+
 # Version 22.01
 
 This is just a dummy version for testing github actions.
