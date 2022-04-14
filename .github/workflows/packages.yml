@@ -66,3 +66,9 @@ jobs:
           #
           path: ejabberd-packages*
           retention-days: 14
+      - name: Draft Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          files: ejabberd-packages/*
