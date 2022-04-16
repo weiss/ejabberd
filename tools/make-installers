@@ -252,7 +252,7 @@ do
 	gzip -c -d <"$tgz_name" >"$tmp_dir/$tar_name"
         create_help_file "$tmp_dir/help.txt"
 	create_setup_script "$tmp_dir" "$tar_name"
-	"$makeself" --license COPYING --help-header "$tmp_dir/help.txt" "$tmp_dir" "$installer_name" "$rel_name $rel_vsn" './setup'
+	"$makeself" --help-header "$tmp_dir/help.txt" "$tmp_dir" "$installer_name" "$rel_name $rel_vsn" './setup'
 	find "$tmp_dir" -mindepth 1 -delete
 done
 echo "$myself: Created installers successfully."
