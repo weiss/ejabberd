@@ -1,3 +1,7 @@
+# Version 22.07
+
+This is the seventh dummy version for testing github actions.
+
 # Version 22.06
 
 This is the sixth dummy version for testing github actions.
