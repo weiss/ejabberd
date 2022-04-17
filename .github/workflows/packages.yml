@@ -18,6 +18,10 @@ on:
     - 'priv/**'
     - '**.md'
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   binaries:
     name: Binaries
