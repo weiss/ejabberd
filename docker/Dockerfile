@@ -27,7 +27,7 @@ COPY ejabberd-$VERSION-1-$TARGETOS-$TARGETARCH.run installer.run
 RUN XMPPHOST=localhost ./installer.run \
     && rm ./installer.run
 
-COPY docker/ctl.sh /bin/ejabberdctl
+COPY ctl.sh /bin/ejabberdctl
 
 HEALTHCHECK \
     --interval=5s \
