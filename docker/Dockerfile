@@ -8,20 +8,15 @@ ENV LC_ALL=C.UTF-8 \
     REPLACE_OS_VARS=true \
     HOME=/opt/ejabberd \
     VERSION=${VERSION:-latest}
-LABEL maintainer="ProcessOne <contact@process-one.net>" \
-    product="Ejabberd Community Server Official Docker Image" \
-    version=$VERSION \
-    org.label-schema.vcs-url="https://github.com/processone/ejabberd" \
-    org.label-schema.name="Ejabberd Community Server Official Docker Image" \
-    org.label-schema.description="Robust, Scalable and Extensible Realtime Server using XMPP, MQTT and SIP" \
-    org.label-schema.url="https://www.ejabberd.im/" \
-    org.label-schema.vendor="ProcessOne" \
-    org.label-schema.version=$VERSION \
-    org.label-schema.schema-version="1.0"
+LABEL org.opencontainers.image.description="Robust and scalable Jabber / XMPP Instant Messaging platform" \
+    org.opencontainers.image.source="https://github.com/processone/ejabberd" \
+    org.opencontainers.image.title="ejabberd" \
+    org.opencontainers.image.url="https://www.ejabberd.im/" \
+    org.opencontainers.image.version=$VERSION
 
 # Install required dependencies
 RUN apt-get update \
-    && apt-get install \
+    && apt-get install -y --no-install-recommends \
     openssl \
     && rm -rf /var/cache/apt \
     && rm -rf /var/lib/apt/lists/*
