@@ -17,7 +17,7 @@ ENV LC_ALL=C.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
     REPLACE_OS_VARS=true \
     HOME=/opt/ejabberd
-LABEL org.opencontainers.image.description="Robust and scalable Jabber / XMPP Instant Messaging platform" \
+LABEL org.opencontainers.image.description="Robust, Scalable and Extensible Realtime Platform" \
     org.opencontainers.image.source="https://github.com/processone/ejabberd" \
     org.opencontainers.image.title="ejabberd" \
     org.opencontainers.image.url="https://www.ejabberd.im/" \
@@ -34,9 +34,11 @@ HEALTHCHECK \
     --retries=120 \
     CMD /bin/ejabberdctl status
 
-# Setup runtime environment
 USER ejabberd
-VOLUME ["/opt/ejabberd/database","/opt/ejabberd/conf","/opt/ejabberd/logs","/opt/ejabberd/upload"]
+VOLUME ["/opt/ejabberd/conf", \
+    "/opt/ejabberd/database", \
+    "/opt/ejabberd/logs", \
+    "/opt/ejabberd/upload"]
 EXPOSE 1883 4369-4399 5222 5269 5280 5443
 
 ENTRYPOINT ["/bin/ejabberdctl"]
