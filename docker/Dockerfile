@@ -1,33 +1,31 @@
-FROM debian:11-slim
+FROM debian:11-slim AS build
 ARG VERSION
 ARG TARGETOS
 ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y \
+    openssl
+
+COPY ejabberd-$VERSION-1-$TARGETOS-$TARGETARCH.run installer.run
+RUN XMPPHOST=localhost ./installer.run
+
+FROM debian:11-slim
+ARG VERSION
 ENV LC_ALL=C.UTF-8 \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
     REPLACE_OS_VARS=true \
-    HOME=/opt/ejabberd \
-    VERSION=${VERSION:-latest}
+    HOME=/opt/ejabberd
 LABEL org.opencontainers.image.description="Robust and scalable Jabber / XMPP Instant Messaging platform" \
     org.opencontainers.image.source="https://github.com/processone/ejabberd" \
     org.opencontainers.image.title="ejabberd" \
     org.opencontainers.image.url="https://www.ejabberd.im/" \
     org.opencontainers.image.version=$VERSION
 
-# Install required dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    openssl \
-    && rm -rf /var/cache/apt \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install ejabberd
-WORKDIR /opt/
-COPY ejabberd-$VERSION-1-$TARGETOS-$TARGETARCH.run installer.run
-RUN XMPPHOST=localhost ./installer.run \
-    && rm ./installer.run
-
 COPY ctl.sh /bin/ejabberdctl
+COPY --from=build /etc/passwd /etc/passwd
+COPY --from=build /opt /opt
 
 HEALTHCHECK \
     --interval=5s \
