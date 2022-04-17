@@ -424,6 +424,13 @@ dev $(DEV_CONFIG):
 
 version = $(shell git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]')
 
+dbuildx:
+	docker buildx build \
+                --platform=linux/amd64 \
+	    	--build-arg VERSION=$(version) \
+	    	-t badlop/ejtestecs:$(version) docker/
+	docker tag badlop/ejtestecs:$(version) badlop/ejtestecs:latest
+
 dbuild:
 	docker build \
 	    	--file docker/Dockerfile \
@@ -522,6 +529,7 @@ help:
 	@echo "  relive         Start a live ejabberd in _build/relive/"
 	@echo ""
 	@echo "  dbuild         Build a Docker image"
+	@echo "  dbuildx        Build a Docker image using buildx"
 	@echo "  dup            Create and start a Docker container"
 	@echo "  dsh            "
 	@echo "  dclean         Stop and delete a Docker container"
