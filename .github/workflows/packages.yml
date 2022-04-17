@@ -106,7 +106,8 @@ jobs:
         run: |
           mv ejabberd-packages/* .
           chmod +x ejabberd-*.run
-          for f in ejabberd-*x64*; do mv "$f" "${f/x64/amd64}";done
+          for f in ejabberd-*x64*; do mv "$f" "${f/x64/amd64}"; done
+          mv ejabberd-*.run docker/
 
       - name: Log in to the Container registry
         uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
@@ -129,9 +130,8 @@ jobs:
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
         if: github.ref_type == 'tag'
         with:
-          context: .
+          context: docker/
           push: true
-          file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           build-args: |
             VERSION=${{ github.ref_name }}
