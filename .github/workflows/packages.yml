@@ -73,6 +73,7 @@ jobs:
 
   release:
     name: Release
+    needs: [binaries]
     runs-on: ubuntu-latest
     steps:
       - name: Download packages
@@ -88,6 +89,7 @@ jobs:
 
   container:
     name: Container
+    needs: [binaries]
     runs-on: ubuntu-latest
     permissions:
       packages: write
