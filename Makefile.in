@@ -422,6 +422,28 @@ DEV_CONFIG = _build/dev/rel/ejabberd/etc/ejabberd/ejabberd.yml
 dev $(DEV_CONFIG):
 	$(REBARDEV)
 
+version = $(shell git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]')
+
+dbuild:
+	docker build \
+	    	--file docker/Dockerfile \
+	    	--build-arg VERSION=$(version) \
+	    	--build-arg PLATFORM=x64 \
+	    	-t badlop/ejtestecs:$(version) .
+	    	#--build-arg VCS_REF=`git rev-parse --short HEAD`
+	    	#--build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"`
+	docker tag badlop/ejtestecs:$(version) badlop/ejtestecs:latest
+
+dup:
+	sudo docker-compose -f docker/docker-compose.yml up
+
+dsh:
+	sudo docker exec -it  ejabberd sh
+
+dclean:
+	sudo docker-compose -f docker/docker-compose.yml down
+	sudo docker volume prune -f
+
 TAGS:
 	etags *.erl
 
@@ -498,6 +520,11 @@ help:
 	@echo "  rel            Build a production release"
 	@echo "  dev            Build a development release"
 	@echo "  relive         Start a live ejabberd in _build/relive/"
+	@echo ""
+	@echo "  dbuild         Build a Docker image"
+	@echo "  dup            Create and start a Docker container"
+	@echo "  dsh            "
+	@echo "  dclean         Stop and delete a Docker container"
 	@echo ""
 	@echo "  edoc           Generate edoc documentation (unused)"
 	@echo "  options        Generate ejabberd_option.erl"
