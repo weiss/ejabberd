@@ -1,6 +1,7 @@
 FROM debian:11-slim
 ARG VERSION
-ARG PLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 ENV LC_ALL=C.UTF-8 \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
@@ -27,7 +28,7 @@ RUN apt-get update \
 
 # Install ejabberd
 WORKDIR /opt/
-COPY ejabberd-$VERSION-1-linux-$PLATFORM.run installer.run
+COPY ejabberd-$VERSION-1-$TARGETOS-$TARGETARCH.run installer.run
 RUN XMPPHOST=localhost ./installer.run \
     && rm ./installer.run
 
