@@ -18,16 +18,18 @@ If you are using a Windows operating system, check the tutorials mentioned in
 
 # Start ejabberd
 
-## With default configuration (REVISAR)
+## With default configuration
 
 You can start ejabberd in a new container with the following command:
 
 ```bash
-docker run --name ejabberd -d -p 5222:5222 ejabberd/ecs
+docker run --name ejabberd -d -p 5222:5222 ghcr.io/badlop/ejabberd-edi
 ```
 
 This command will run Docker image as a daemon,
 using ejabberd default configuration file and XMPP domain "localhost".
+Check the available
+[ejabberd packages](https://github.com/badlop?tab=packages&repo_name=ejabberd).
 
 To stop the running container, you can run:
 
@@ -41,41 +43,54 @@ If needed, you can restart the stopped ejabberd container with:
 docker restart ejabberd
 ```
 
-## Start with Erlang console attached (REVISAR)
+## Start with Erlang console attached
 
 If you would like to start ejabberd with an Erlang console attached you can use the `live` command:
 
 ```bash
-docker run -it -p 5222:5222 ejabberd/ecs live
+docker run --name ejabberd -it -p 5222:5222 ghcr.io/badlop/ejabberd-edi live
 ```
 
 This command will use default configuration file and XMPP domain "localhost".
 
-## Start with your configuration and database (REVISAR)
+## Start with your configuration and database
 
 The following command will pass config file using Docker volume feature
-and share local directory to store database:
+and share local directory to store database.
+Notice that ejabberd is ran in the container with an account named 'ejabberd',
+and the volumes you mount must grant proper rights to that account.
 
 ```bash
 mkdir database
-docker run -d --name ejabberd -v $(pwd)/ejabberd.yml:/home/ejabberd/conf/ejabberd.yml -v $(pwd)/database:/home/ejabberd/database -p 5222:5222 ejabberd/ecs
+chown ejabberd database
+
+cp ejabberd.yml.example ejabberd.yml
+
+docker run --name ejabberd -it \
+  -v $(pwd)/ejabberd.yml:/opt/ejabberd/conf/ejabberd.yml \
+  -v $(pwd)/database:/opt/ejabberd/database \
+  -p 5222:5222 ghcr.io/badlop/ejabberd-edi live
 ```
 
 # Next steps
 
-## Register the administrator account (REVISAR)
+## Register the administrator account
 
-The default ejabberd configuration has already granted admin privilege
-to an account that would be called `admin@localhost`,
-so you just need to register such an account
-to start using it for administrative purposes.
+The default ejabberd configuration has not granted admin privilege
+to any account,
+you may want to register a new account in ejabberd
+and grant it admin rights.
+
 You can register this account using the `ejabberdctl` script, for example:
 
 ```bash
 docker exec -it ejabberd ejabberdctl register admin localhost passw0rd
 ```
 
-## Check ejabberd log files (REVISAR)
+Then edit conf/ejabberd.yml and add the ACL as explained in
+[ejabberd Docs: Administration Account](https://docs.ejabberd.im/admin/installation/#administration-account)
+
+## Check ejabberd log files
 
 You can execute a Docker command to check the content of the log files from
 inside to container, even if you do not put it on a shared persistent drive:
@@ -100,13 +115,15 @@ You can open a live debug Erlang console attached to a running container:
 docker exec -it ejabberd ejabberdctl debug
 ```
 
-## CAPTCHA (REVISAR)
+## CAPTCHA
 
 ejabberd includes two example CAPTCHA scripts.
 If you want to use any of them, first install some additional required libraries:
 
 ```bash
-docker exec --user root ejabberd apk add imagemagick ghostscript-fonts bash
+docker exec --user root ejabberd apt-get update
+docker exec --user root ejabberd apt-get install -y --no-install-recommends gsfonts imagemagick
+
 ```
 
 Now update your ejabberd configuration file, for example:
@@ -116,55 +133,13 @@ docker exec -it ejabberd vi conf/ejabberd.yml
 
 and add the required options:
 ```
-captcha_cmd: /home/ejabberd/lib/ejabberd-21.1.0/priv/bin/captcha.sh
+captcha_cmd: /opt/ejabberd-22.04/lib/ejabberd-22.04/priv/bin/captcha.sh
 captcha_url: https://localhost:5443/captcha
 ```
 
 Finally, reload the configuration file or restart the container:
 ```bash
-docker exec ejabberd bin/ejabberdctl reload_config
-```
-
-## Use ejabberdapi (REVISAR)
-
-When the container is running (and thus ejabberd), you can exec commands inside the container
-using `ejabberdctl` or any other of the available interfaces, see
-[Understanding ejabberd "commands"](https://docs.ejabberd.im/developer/ejabberd-api/#understanding-ejabberd-commands)
-
-Additionally, this Docker image includes the `ejabberdapi` executable.
-Please check the [ejabberd-api homepage](https://github.com/processone/ejabberd-api)
-for configuration and usage details.
-
-For example, if you configure ejabberd like this:
-```yaml
-listen:
-  -
-    port: 5282
-    module: ejabberd_http
-    request_handlers:
-      "/api": mod_http_api
-
-acl:
-  loopback:
-    ip:
-      - 127.0.0.0/8
-      - ::1/128
-      - ::FFFF:127.0.0.1/128
-
-api_permissions:
-  "admin access":
-    who:
-      access:
-        allow:
-          acl: loopback
-    what:
-      - "register"
-```
-
-Then you could register new accounts with this query:
-
-```bash
-docker exec -it ejabberd bin/ejabberdapi register --endpoint=http://127.0.0.1:5282/ --jid=admin@localhost --password=passw0rd
+docker exec ejabberd ejabberdctl reload_config
 ```
 
 # Advanced Docker configuration
@@ -180,24 +155,21 @@ This Docker image exposes the ports:
 - `1883`: Used for MQTT
 - `4369-4399`: EPMD and Erlang connectivity, used for `ejabberdctl` and clustering
 
-## Volumes (REVISAR)
+## Volumes
 
 ejabberd produces two types of data: log files and database (Mnesia).
 This is the kind of data you probably want to store on a persistent or local drive (at least the database).
 
 Here are the volume you may want to map:
 
-- `/home/ejabberd/conf/`: Directory containing configuration and certificates
-- `/home/ejabberd/database/`: Directory containing Mnesia database.
+- `/opt/ejabberd/conf/`: Directory containing configuration and certificates
+- `/opt/ejabberd/database/`: Directory containing Mnesia database.
 You should back up or export the content of the directory to persistent storage
 (host storage, local storage, any storage plugin)
-- `/home/ejabberd/logs/`: Directory containing log files
-- `/home/ejabberd/upload/`: Directory containing uploaded files. This should also be backed up.
+- `/opt/ejabberd/logs/`: Directory containing log files
+- `/opt/ejabberd/upload/`: Directory containing uploaded files. This should also be backed up.
 
-All these files are owned by ejabberd user inside the container. Corresponding
-`UID:GID` is `9000:9000`. If you prefer bind mounts instead of docker volumes, then
-you need to map this to valid `UID:GID` on your host to get read/write access on
-mounted directories.
+All these files are owned by `ejabberd` user inside the container.
 
 It's possible to install additional ejabberd modules using Docker volumes,
 check [this comment](https://github.com/processone/docker-ejabberd/issues/81#issuecomment-1036115146)

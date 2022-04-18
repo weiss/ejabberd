@@ -33,4 +33,4 @@ services:
       - main_data:/opt/ejabberd/database
       - main_logs:/opt/ejabberd/logs
       - main_uplo:/opt/ejabberd/upload
-        #- ../ejabberd.yml.example:/opt/ejabberd/conf/ejabberd.yml:ro
+      - ./ejabberd.yml.captcha:/opt/ejabberd/conf/ejabberd.yml:ro
