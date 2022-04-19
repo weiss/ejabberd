@@ -3,10 +3,6 @@ ARG VERSION
 ARG TARGETOS
 ARG TARGETARCH
 ENV HOME=/opt/ejabberd
-LABEL org.opencontainers.image.description="Robust, Scalable and Extensible Realtime Platform" \
-    org.opencontainers.image.title="ejabberd" \
-    org.opencontainers.image.url="https://www.ejabberd.im/" \
-    org.opencontainers.image.version=$VERSION
 
 RUN apt-get update \
     && apt-get install -y \
@@ -31,10 +27,6 @@ ENV LC_ALL=C.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
     REPLACE_OS_VARS=true \
     HOME=/opt/ejabberd
-LABEL org.opencontainers.image.description="Robust, Scalable and Extensible Realtime Platform" \
-    org.opencontainers.image.title="ejabberd" \
-    org.opencontainers.image.url="https://www.ejabberd.im/" \
-    org.opencontainers.image.version=$VERSION
 
 COPY docker/ctl.sh /usr/local/bin/ejabberdctl
 COPY --from=build /etc/passwd /etc/passwd
