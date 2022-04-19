@@ -90,31 +90,15 @@ jobs:
 
   container:
     name: Container
-    needs: [binaries]
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
     permissions:
       packages: write
-    strategy:
-      matrix:
-        variant: [debins]
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Download packages
-        uses: actions/download-artifact@v3
-        with:
-          name: ejabberd-packages
-      - name: Prepare packages
-        run: |
-          mv ejabberd-packages/* .
-          chmod +x ejabberd-*.run
-          for f in ejabberd-*x64*; do mv "$f" "${f/x64/amd64}"; done
-          ls -la ejabberd-*
-          cp docker/README.md .
-
       - name: Log in to the Container registry
         uses: docker/login-action@v1.14.1
         with:
@@ -126,10 +110,6 @@ jobs:
         uses: docker/metadata-action@v3.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: |
-            latest=auto
-            prefix=
-            suffix=-${{matrix.variant}}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
@@ -140,7 +120,7 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           context: .
-          file: docker/Dockerfile.${{matrix.variant}}
+          file: .github/container/Dockerfile
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           push: true
