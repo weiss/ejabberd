@@ -34,7 +34,7 @@ RUN apk upgrade --update musl \
 RUN mix local.hex --force \
     && mix local.rebar --force
 
-RUN git clone https://github.com/processone/ejabberd.git
+RUN git clone https://github.com/badlop/ejabberd.git
 
 WORKDIR /ejabberd
 
