@@ -426,9 +426,10 @@ version = $(shell git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[
 
 dbuildx:
 	docker buildx build \
+	    	--file docker/Dockerfile \
                 --platform=linux/amd64 \
 	    	--build-arg VERSION=$(version) \
-	    	-t badlop/ejtestecs:$(version) docker/
+	    	-t badlop/ejtestecs:$(version) .
 	docker tag badlop/ejtestecs:$(version) badlop/ejtestecs:latest
 
 dbuild:
