@@ -27,6 +27,8 @@ ENV LC_ALL=C.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
     REPLACE_OS_VARS=true \
     HOME=/opt/ejabberd
+LABEL org.opencontainers.image.description="Robust, Scalable and Extensible Realtime Platform" \
+    org.opencontainers.image.url="https://www.ejabberd.im/"
 
 COPY docker/ctl.sh /usr/local/bin/ejabberdctl
 COPY --from=build /etc/passwd /etc/passwd
