@@ -6,86 +6,33 @@ ejabberd Community Edition
 [![Translation status](https://hosted.weblate.org/widgets/ejabberd/-/ejabberd-po/svg-badge.svg "Translation status in Weblate")](https://hosted.weblate.org/projects/ejabberd/ejabberd-po/)
 [![Hex version](https://img.shields.io/hexpm/v/ejabberd.svg "Hex version")](https://hex.pm/packages/ejabberd)
 
-ejabberd is a
-robust, scalable and extensible realtime platform,
+ejabberd is an open-source,
+robust, scalable and extensible realtime platform built using Erlang/OTP,
 including XMPP Server, MQTT Broker and SIP Service.
 Check a detailed
 [feature list](https://docs.ejabberd.im/admin/introduction/).
 
-Quickstart guide
-----------------
 
-### 0. Requirements
+Install
+-------
 
-To compile ejabberd you need:
+There are several ways to install ejabberd:
+* Compile yourself from source code, see [COMPILE.md][compile]
+* Install using graphical installer from [ProcessOne download page][p1dl]
+* Install using console-text installer from [ejabberd GitHub Releases][ghr]
+* Install using [Homebrew][hb]
+* Install using your [Operating System package][osp]
+* Pull a container image from [ejabberd Github Package][ghp], see [CONTAINER.md][container]
+* Pull a container image from [ejabberd Docker Hub][dhecs], see [CONTAINER.md][container]
 
- - GNU Make.
- - GCC.
- - Libexpat ≥ 1.95.
- - Libyaml ≥ 0.1.4.
- - Erlang/OTP ≥ 19.3.
- - OpenSSL ≥ 1.0.0.
- - Zlib ≥ 1.2.3, for Stream Compression support (XEP-0138). Optional.
- - PAM library. Optional. For Pluggable Authentication Modules (PAM).
- - ImageMagick's Convert program and Ghostscript fonts. Optional. For CAPTCHA
-   challenges.
- - Elixir ≥ 1.10.3. Optional. Alternative to build ejabberd
-
-If your system splits packages in libraries and development headers, you must
-install the development packages also.
-
-### 1. Compile and install on *nix systems
-
-To compile ejabberd, execute the following commands.  The first one is only
-necessary if your source tree didn't come with a `configure` script (In this
-case you need autoconf installed).
-
-    ./autogen.sh
-    ./configure
-    make
-
-To install ejabberd, run this command with system administrator rights (root
-user):
-
-    sudo make install
-
-These commands will:
-
-- Install the configuration files in `/etc/ejabberd/`
-- Install ejabberd binary, header and runtime files in `/lib/ejabberd/`
-- Install the administration script: `/sbin/ejabberdctl`
-- Install ejabberd documentation in `/share/doc/ejabberd/`
-- Create a spool directory: `/var/lib/ejabberd/`
-- Create a directory for log files: `/var/log/ejabberd/`
-
-
-### 2. Start ejabberd
-
-You can use the `ejabberdctl` command line administration script to
-start and stop ejabberd. For example:
-
-    ejabberdctl start
-
-
-For detailed information please refer to the
-[ejabberd Documentation](https://docs.ejabberd.im)
-
-
-### 3. Use ejabberd locally
-
-Alternatively, you can setup ejabberd without installing in your system:
-
-    ./configure --with-rebar=rebar3
-    make dev
-
-Or, if you have Elixir available and plan to develop Elixir code:
-
-    ./configure --with-rebar=mix
-    make dev
-
-Check the full list of targets:
-
-    make help
+[compile]: https://github.com/badlop/ejabberd/blob/3781new1/COMPILE.md
+[p1dl]: https://www.process-one.net/en/ejabberd/downloads/
+[ghr]: https://github.com/processone/ejabberd/releases
+[hb]: https://docs.ejabberd.im/admin/installation/#homebrew
+[osp]: https://docs.ejabberd.im/admin/installation/#operating-system-packages
+[ghp]: https://github.com/processone/ejabberd/pkgs/container/ejabberd
+[container]: https://github.com/badlop/ejabberd/blob/3781new1/CONTAINER.md
+[dhecs]: https://hub.docker.com/r/ejabberd/ecs
 
 
 Translation
