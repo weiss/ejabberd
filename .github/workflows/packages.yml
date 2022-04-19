@@ -95,6 +95,9 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       packages: write
+    strategy:
+      matrix:
+        variant: [debins]
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
@@ -125,7 +128,7 @@ jobs:
           flavor: |
             latest=auto
             prefix=
-            suffix=-debins
+            suffix=-${{matrix.variant}}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
@@ -136,7 +139,7 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           context: .
-          file: docker/Dockerfile
+          file: docker/Dockerfile.${{matrix.variant}}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           push: true
