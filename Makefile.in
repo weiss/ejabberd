@@ -422,34 +422,32 @@ DEV_CONFIG = _build/dev/rel/ejabberd/etc/ejabberd/ejabberd.yml
 dev $(DEV_CONFIG):
 	$(REBARDEV)
 
-version = $(shell git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]')
-
-dbuildx:
-	docker buildx build \
-	    	--file docker/Dockerfile \
-                --platform=linux/amd64 \
-	    	--build-arg VERSION=$(version) \
-	    	-t badlop/ejtestecs:$(version) .
-	docker tag badlop/ejtestecs:$(version) badlop/ejtestecs:latest
+#version = $(shell git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]')
+version = 21.12
 
 dbuild:
 	docker build \
-	    	--file docker/Dockerfile \
+	    	--file .github/container/Dockerfile \
 	    	--build-arg VERSION=$(version) \
-	    	--build-arg PLATFORM=x64 \
-	    	-t badlop/ejtestecs:$(version) .
-	    	#--build-arg VCS_REF=`git rev-parse --short HEAD`
-	    	#--build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"`
-	docker tag badlop/ejtestecs:$(version) badlop/ejtestecs:latest
+	    	-t badlop/eja:$(version) .
+	docker tag badlop/eja:$(version) badlop/eja:latest
+
+dbuildx:
+	docker buildx build \
+	    	--file .github/container/Dockerfile \
+                --platform=linux/amd64 \
+	    	--build-arg VERSION=$(version) \
+	    	-t badlop/eja:$(version) .
+	docker tag badlop/eja:$(version) badlop/eja:latest
 
 dup:
-	sudo docker-compose -f docker/docker-compose.yml up
+	sudo docker run --name ejabberd -it -p 5222:5222 badlop/eja:latest
 
 dsh:
 	sudo docker exec -it  ejabberd sh
 
 dclean:
-	sudo docker-compose -f docker/docker-compose.yml down
+	sudo docker container prune -f
 	sudo docker volume prune -f
 
 TAGS:
