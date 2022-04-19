@@ -113,6 +113,7 @@ jobs:
           chmod +x ejabberd-*.run
           for f in ejabberd-*x64*; do mv "$f" "${f/x64/amd64}"; done
           ls -la ejabberd-*
+          cp docker/README.md .
 
       - name: Log in to the Container registry
         uses: docker/login-action@v1.14.1
