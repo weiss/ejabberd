@@ -71,8 +71,7 @@ RUN export PEM=/opt/ejabberd/conf/server.pem \
         \n  - /opt/ejabberd/conf/server.pem' "/opt/ejabberd/conf/ejabberd.yml"
 
 FROM alpine:3.14
-ENV HOME=/opt/ejabberd \
-    REPLACE_OS_VARS=true
+ENV HOME=/opt/ejabberd
 
 RUN apk upgrade --update musl \
     && apk add \
@@ -119,7 +118,7 @@ HEALTHCHECK \
 
 WORKDIR $HOME
 USER ejabberd
-VOLUME ["$HOME/database","$HOME/conf","$HOME/logs","$HOME/upload"]
+VOLUME ["$HOME/conf", "$HOME/database", "$HOME/logs", "$HOME/upload"]
 EXPOSE 1883 4369-4399 5222 5269 5280 5443
 
 #ENTRYPOINT ["sh"]
