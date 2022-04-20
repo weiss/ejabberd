@@ -1,11 +1,5 @@
 FROM alpine:3.14 AS build
-ARG VERSION
-ENV VERSION=${VERSION:-latest} \
-    HOME=/ \
-    LC_ALL=C.UTF-8 \
-    LANG=en_US.UTF-8 \
-    LANGUAGE=en_US.UTF-8 \
-    REPLACE_OS_VARS=true
+ARG VERSION=master
 
 RUN apk upgrade --update musl \
     && apk add \
@@ -38,7 +32,7 @@ RUN git clone https://github.com/badlop/ejabberd.git
 
 WORKDIR /ejabberd
 
-RUN git checkout ${VERSION/latest/HEAD}
+RUN git checkout $VERSION
 
 RUN ./autogen.sh \
     && ./configure --with-rebar=mix --enable-all \
