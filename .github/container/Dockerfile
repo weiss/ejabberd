@@ -49,8 +49,9 @@ RUN cp -r _build/prod/rel/ejabberd/ /opt/ejabberd-$VERSION \
     && mkdir -p /opt/ejabberd \
     && mv /opt/ejabberd-$VERSION/etc/ejabberd /opt/ejabberd/conf
 
-RUN mkdir /opt/ejabberd-$VERSION/lib/ejabberd-$VERSION.0/priv/bin \
-    && cp tools/captcha*.sh /opt/ejabberd-$VERSION/lib/ejabberd-$VERSION.0/priv/bin/
+RUN MIXVER=$(git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]') \
+    && mkdir /opt/ejabberd-$VERSION/lib/ejabberd-$MIXVER/priv/bin \
+    && cp tools/captcha*.sh /opt/ejabberd-$VERSION/lib/ejabberd-$MIXVER/priv/bin/
 
 RUN sed -i 's|as_current_user) |as_current_user) exec |g' /opt/ejabberd-$VERSION/bin/ejabberdctl
 
@@ -70,9 +71,7 @@ RUN export PEM=/opt/ejabberd/conf/server.pem \
         \n  - /opt/ejabberd/conf/server.pem' "/opt/ejabberd/conf/ejabberd.yml"
 
 FROM alpine:3.14
-ARG VERSION
-ENV VERSION=${VERSION:-latest} \
-    HOME=/opt/ejabberd \
+ENV HOME=/opt/ejabberd \
     LC_ALL=C.UTF-8 \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US.UTF-8 \
