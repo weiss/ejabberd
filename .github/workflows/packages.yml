@@ -118,6 +118,8 @@ jobs:
         with:
           build-args: |
             VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           context: .
           file: .github/container/Dockerfile
           labels: ${{ steps.meta.outputs.labels }}
