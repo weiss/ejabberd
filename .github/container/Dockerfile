@@ -28,13 +28,10 @@ RUN apk upgrade --update musl \
 RUN mix local.hex --force \
     && mix local.rebar --force
 
-RUN git clone https://github.com/badlop/ejabberd.git
-
-WORKDIR /ejabberd
-
-RUN git checkout $VERSION
-
-RUN ./autogen.sh \
+WORKDIR ejabberd
+RUN git clone https://github.com/badlop/ejabberd.git . \
+    && git checkout $VERSION \
+    && ./autogen.sh \
     && ./configure --with-rebar=mix --enable-all \
     && make \
     && make rel
@@ -43,7 +40,8 @@ RUN cp -r _build/prod/rel/ejabberd/ /opt/ejabberd-$VERSION \
     && mkdir -p /opt/ejabberd \
     && mv /opt/ejabberd-$VERSION/etc/ejabberd /opt/ejabberd/conf
 
-RUN MIXVER=$(git describe --tags | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]') \
+RUN DESCRIBE=$(git describe --tags) \
+    && MIXVER=$(echo $DESCRIBE.0 | sed -e 's/-g.*//' -e 's/-/./' | tr -d '[:space:]') \
     && mkdir /opt/ejabberd-$VERSION/lib/ejabberd-$MIXVER/priv/bin \
     && cp tools/captcha*.sh /opt/ejabberd-$VERSION/lib/ejabberd-$MIXVER/priv/bin/
 
