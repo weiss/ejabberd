@@ -72,9 +72,6 @@ RUN export PEM=/opt/ejabberd/conf/server.pem \
 
 FROM alpine:3.14
 ENV HOME=/opt/ejabberd \
-    LC_ALL=C.UTF-8 \
-    LANG=en_US.UTF-8 \
-    LANGUAGE=en_US.UTF-8 \
     REPLACE_OS_VARS=true
 
 RUN apk upgrade --update musl \
