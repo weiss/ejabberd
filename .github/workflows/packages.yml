@@ -91,7 +91,6 @@ jobs:
   container:
     name: Container
     runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
     permissions:
       packages: write
     steps:
