@@ -88,6 +88,7 @@ RUN apk upgrade --update musl \
     libpng \
     libstdc++ \
     libwebp \
+    linux-pam \
     ncurses-libs \
     openssl \
     sqlite \
