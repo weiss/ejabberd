@@ -26,7 +26,6 @@ jobs:
   binaries:
     name: Binaries
     runs-on: ubuntu-latest
-    if: github.ref_type == 'tag' # jus for testing, remove this line later
     steps:
       - name: Cache build directory
         uses: actions/cache@v2
@@ -75,7 +74,6 @@ jobs:
   release:
     name: Release
     needs: [binaries]
-    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - name: Download packages
@@ -83,9 +81,19 @@ jobs:
         with:
           name: ejabberd-packages
       - name: Draft Release
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v1
         with:
           draft: true
+          files: ejabberd-packages/*
+      - name: Pre-Release Edge
+        if: github.ref_type != 'tag'
+        uses: softprops/action-gh-release@v1
+        with:
+          name: edge
+          body: "This is bleeding-edge code, just for testing"
+          generate_release_notes: true
+          prerelease: true
           files: ejabberd-packages/*
 
   container:
@@ -118,6 +126,7 @@ jobs:
         run: echo "::set-output name=gitver::$(git describe --tags)"
       - name: Build and push Docker image
         uses: docker/build-push-action@v2.10.0
+        if: github.ref_type == 'tag'
         with:
           build-args: |
             VERSION=${{ steps.gitdescribe.outputs.gitver }}
@@ -129,3 +138,18 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v2.10.0
+        if: github.ref_type != 'tag'
+        with:
+          build-args: |
+            VERSION=${{ steps.gitdescribe.outputs.gitver }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          context: .github/container
+          labels: ${{ steps.meta.outputs.labels }}
+          #platforms: linux/amd64,linux/arm64 # arm takes 30 mins to compile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            type=edge
