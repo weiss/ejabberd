@@ -125,6 +125,7 @@ jobs:
           cache-to: type=gha,mode=max
           context: .github/container
           labels: ${{ steps.gitver.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          #platforms: linux/amd64,linux/arm64 # arm takes 30 mins to compile
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
