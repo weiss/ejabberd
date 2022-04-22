@@ -75,26 +75,16 @@ jobs:
     name: Release
     needs: [binaries]
     runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
     steps:
       - name: Download packages
         uses: actions/download-artifact@v3
         with:
           name: ejabberd-packages
       - name: Draft Release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v1
         with:
           draft: true
-          files: ejabberd-packages/*
-      - name: Pre-Release Edge
-        if: github.ref_type != 'tag'
-        uses: softprops/action-gh-release@v1
-        with:
-          name: edge1
-          tag_name: edge2
-          body: "This is bleeding-edge code, just for testing"
-          generate_release_notes: true
-          prerelease: true
           files: ejabberd-packages/*
 
   container:
@@ -113,6 +103,9 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get git describe
+        id: gitdescribe
+        run: echo "::set-output name=gitver::$(git describe --tags)"
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         if: github.ref_type == 'tag'
@@ -127,13 +120,12 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=edge
+          labels: |
+            org.opencontainers.image.description=ejabberd git master branch ${{ steps.gitdescribe.outputs.gitver }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
-      - name: Get git describe
-        id: gitdescribe
-        run: echo "::set-output name=gitver::$(git describe --tags)"
       - name: Build and push Docker image
         uses: docker/build-push-action@v2.10.0
         with:
