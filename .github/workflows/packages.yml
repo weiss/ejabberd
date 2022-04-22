@@ -111,6 +111,8 @@ jobs:
         uses: docker/metadata-action@v3.7.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.description=ejabberd git master branch ${{ steps.gitdescribe.outputs.gitver }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
