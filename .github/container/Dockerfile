@@ -64,6 +64,8 @@ RUN export PEM=/opt/ejabberd/conf/server.pem \
 
 FROM alpine:3.14
 ENV HOME=/opt/ejabberd
+LABEL org.opencontainers.image.licenses="GPL-2.0" \
+    org.opencontainers.image.vendor="ProcessOne" \
 
 RUN apk upgrade --update musl \
     && apk add \

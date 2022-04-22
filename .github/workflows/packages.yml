@@ -113,8 +113,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           labels: |
             org.opencontainers.image.revision=${{ steps.gitdescribe.outputs.ver }}
-            org.opencontainers.image.licenses=GPL-2.0
-            org.opencontainers.image.vendor=ProcessOne
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
