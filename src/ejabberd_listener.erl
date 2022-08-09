@@ -320,7 +320,8 @@ start_connection(Module, Arity, Socket, State, Sup) ->
     case Res of
 	{ok, Pid} ->
 	    case gen_tcp:controlling_process(Socket, Pid) of
-		ok ->
+		Res1 when Res1 == ok; % Allow Module:start() to take ownership:
+			  Res1 == {error, not_owner} ->
 		    Module:accept(Pid),
 		    {ok, Pid};
 		Err ->
