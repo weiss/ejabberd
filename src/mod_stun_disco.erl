@@ -551,8 +551,8 @@ add_credentials(Service, Hash, Secret, TTL) ->
 		    expires = seconds_to_timestamp(ExpireAt)}.
 
 -spec make_username(non_neg_integer(), binary()) -> binary().
-make_username(ExpireAt, Hash) ->
-    <<(integer_to_binary(ExpireAt))/binary, $:, Hash/binary>>.
+make_username(ExpireAt, _Hash) ->
+    integer_to_binary(ExpireAt).
 
 -spec make_password(binary(), binary()) -> binary().
 make_password(Username, Secret) ->
