@@ -212,6 +212,8 @@ c2s_handle_send(State, _Pkt, _Result) ->
 
 c2s_handle_cast(#{mgmt_state := active} = State, send_ping) ->
     {stop, send_rack(State)};
+c2s_handle_cast(#{mgmt_state := pending} = State, send_ping) ->
+    {stop, State};
 c2s_handle_cast(State, _Msg) ->
     State.
 
