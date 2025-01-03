@@ -108,7 +108,6 @@ start(Host, Opts) ->
           {hook, offline_message_hook, offline_message, 55},
           {hook, remove_user, remove_user, 50}]}.
 
-
 -spec stop(binary()) -> ok.
 stop(Host) ->
     case gen_mod:is_loaded_elsewhere(Host, ?MODULE) of
