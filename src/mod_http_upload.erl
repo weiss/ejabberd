@@ -119,6 +119,7 @@
 -type state() :: #state{}.
 -type slot() :: [binary(), ...].
 -type slots() :: #{slot() => {pos_integer(), reference()}}.
+-type purpose() :: message | profile | ephemeral | persistent | undefined.
 -type media_info() :: #media_info{}.
 
 %%--------------------------------------------------------------------
@@ -525,7 +526,7 @@ code_change(_OldVsn, #state{server_host = ServerHost} = State, _Extra) ->
 -spec process([binary()], #request{})
       -> {pos_integer(), [{binary(), binary()}], binary()}.
 process(LocalPath, #request{method = Method, host = Host, ip = IP})
-    when length(LocalPath) < 3,
+    when length(LocalPath) < 4,
 	 Method == 'PUT' orelse
 	 Method == 'GET' orelse
 	 Method == 'HEAD' ->
@@ -578,7 +579,8 @@ process(_LocalPath, #request{method = Method, host = Host, ip = IP} = Request0)
     when Method == 'GET';
 	 Method == 'HEAD' ->
     Request = Request0#request{host = redecode_url(Host)},
-    {Proc, [_UserDir, _RandDir, FileName] = Slot} = parse_http_request(Request),
+    {Proc, [_UserDir, _PurposeDir, _RandDir, FileName] = Slot} =
+        parse_http_request(Request),
     try gen_server:call(Proc, get_conf, ?CALL_TIMEOUT) of
 	{ok, DocRoot, CustomHeaders} ->
 	    Path = str:join([DocRoot | Slot], <<$/>>),
@@ -759,30 +761,31 @@ process_iq(#iq{type = get, sub_els = [#upload_request{filename = File,
 						      'content-type' = CType,
 						      xmlns = XMLNS}]} = IQ,
 	   State) ->
-    process_slot_request(IQ, File, Size, CType, XMLNS, State);
+    process_slot_request(IQ, File, Size, CType, message, XMLNS, State);
 process_iq(#iq{type = get, sub_els = [#upload_request_0{filename = File,
 							size = Size,
 							'content-type' = CType,
+							purpose = Purpose,
 							xmlns = XMLNS}]} = IQ,
 	   State) ->
-    process_slot_request(IQ, File, Size, CType, XMLNS, State);
+    process_slot_request(IQ, File, Size, CType, Purpose, XMLNS, State);
 process_iq(#iq{type = T, lang = Lang} = IQ, _State) when T == get; T == set ->
     Txt = ?T("No module is handling this query"),
     xmpp:make_error(IQ, xmpp:err_service_unavailable(Txt, Lang));
 process_iq(#iq{}, _State) ->
     not_request.
 
--spec process_slot_request(iq(), binary(), pos_integer(), binary(), binary(),
-			   state()) -> {iq(), state()} | iq().
+-spec process_slot_request(iq(), binary(), pos_integer(), binary(), purpose(),
+			   binary(), state()) -> {iq(), state()} | iq().
 process_slot_request(#iq{lang = Lang, from = From} = IQ,
-		     File, Size, CType, XMLNS,
+		     File, Size, CType, Purpose, XMLNS,
 		     #state{server_host = ServerHost,
 			    access = Access} = State) ->
     case acl:match_rule(ServerHost, Access, From) of
 	allow ->
 	    ContentType = yield_content_type(CType),
-	    case create_slot(State, From, File, Size, ContentType, XMLNS,
-			     Lang) of
+	    case create_slot(State, From, File, Size, ContentType, Purpose,
+			     XMLNS, Lang) of
 		{ok, Slot} ->
 		    Query = make_query_string(Slot, Size, State),
 		    NewState = add_slot(Slot, Size, State),
@@ -801,11 +804,11 @@ process_slot_request(#iq{lang = Lang, from = From} = IQ,
 	    xmpp:make_error(IQ, xmpp:err_forbidden(Txt, Lang))
     end.
 
--spec create_slot(state(), jid(), binary(), pos_integer(), binary(), binary(),
-		  binary())
+-spec create_slot(state(), jid(), binary(), pos_integer(), binary(), purpose(),
+		  binary(), binary())
       -> {ok, slot()} | {ok, binary(), binary()} | {error, xmpp_element()}.
 create_slot(#state{service_url = undefined, max_size = MaxSize},
-	    JID, File, Size, _ContentType, XMLNS, Lang)
+	    JID, File, Size, _ContentType, _Purpose, XMLNS, Lang)
   when MaxSize /= infinity,
        Size > MaxSize ->
     Text = {?T("File larger than ~w bytes"), [MaxSize]},
@@ -822,9 +825,10 @@ create_slot(#state{service_url = undefined,
 		   secret_length = SecretLength,
 		   server_host = ServerHost,
 		   docroot = DocRoot},
-	    JID, File, Size, _ContentType, _XMLNS, Lang) ->
+	    JID, File, Size, _ContentType, Purpose, _XMLNS, Lang) ->
+    PurposeStr = make_purpose_string(Purpose),
     UserStr = make_user_string(JID, JIDinURL),
-    UserDir = <<DocRoot/binary, $/, UserStr/binary>>,
+    UserDir = str:join([DocRoot, UserStr, PurposeStr], <<$/>>),
     case ejabberd_hooks:run_fold(http_upload_slot_request, ServerHost, allow,
 				 [ServerHost, JID, UserDir, Size, Lang]) of
 	allow ->
@@ -832,7 +836,7 @@ create_slot(#state{service_url = undefined,
 	    FileStr = make_file_string(File),
 	    ?INFO_MSG("Got HTTP upload slot for ~ts (file: ~ts, size: ~B)",
 		      [jid:encode(JID), File, Size]),
-	    {ok, [UserStr, RandStr, FileStr]};
+	    {ok, [UserStr, PurposeStr, RandStr, FileStr]};
 	deny ->
 	    {error, xmpp:err_service_unavailable()};
 	#stanza_error{} = Error ->
@@ -840,7 +844,7 @@ create_slot(#state{service_url = undefined,
     end;
 create_slot(#state{service_url = ServiceURL},
 	    #jid{luser = U, lserver = S} = JID,
-	    File, Size, ContentType, _XMLNS, Lang) ->
+	    File, Size, ContentType, _Purpose, _XMLNS, Lang) ->
     Options = [{body_format, binary}, {full_result, false}],
     HttpOptions = [{timeout, ?SERVICE_REQUEST_TIMEOUT}],
     SizeStr = integer_to_binary(Size),
@@ -932,6 +936,13 @@ redecode_url(UrlString) ->
     Host = misc:uri_quote(HostDecoded),
     re:replace(UrlString, HostIdna, Host, [{return, binary}]).
 
+-spec make_purpose_string(purpose()) -> binary().
+make_purpose_string(message) -> <<"message">>;
+make_purpose_string(profile) -> <<"profile">>;
+make_purpose_string(ephemeral) -> <<"ephemeral">>;
+make_purpose_string(permanent) -> <<"permanent">>;
+make_purpose_string(undefined) -> <<"message">>.
+
 -spec make_user_string(jid(), sha1 | node) -> binary().
 make_user_string(#jid{luser = U, lserver = S}, sha1) ->
     str:sha(<<U/binary, $@, S/binary>>);
@@ -984,6 +995,8 @@ iq_disco_info(Host, Lang, Name, AddInfo) ->
 					name = translate:translate(Lang, Name)}],
 		features = [?NS_HTTP_UPLOAD,
 			    ?NS_HTTP_UPLOAD_0,
+			    ?NS_HTTP_UPLOAD_PURPOSE_MESSAGE_0,
+			    ?NS_HTTP_UPLOAD_PURPOSE_PROFILE_0,
 			    ?NS_HTTP_UPLOAD_OLD,
 			    ?NS_VCARD,
 			    ?NS_DISCO_INFO,
@@ -995,7 +1008,7 @@ iq_disco_info(Host, Lang, Name, AddInfo) ->
 -spec parse_http_request(#request{}) -> {atom(), slot()}.
 parse_http_request(#request{host = Host0, path = Path}) ->
     Host = jid:nameprep(Host0),
-    PrefixLength = length(Path) - 3,
+    PrefixLength = length(Path) - 4,
     {ProcURL, Slot} = if PrefixLength > 0 ->
 			      Prefix = lists:sublist(Path, PrefixLength),
 			      {str:join([Host | Prefix], $/),
@@ -1017,9 +1030,9 @@ store_file(Path, Request, FileMode, DirMode, GetPrefix, Slot, Thumbnail) ->
 		{ok, Data, MediaInfo} ->
 		    case convert(Data, MediaInfo) of
 			{ok, #media_info{path = OutPath} = OutMediaInfo} ->
-			    [UserDir, RandDir | _] = Slot,
+			    [UserDir, PurposeDir, RandDir | _] = Slot,
 			    FileName = filename:basename(OutPath),
-			    URL = str:join([GetPrefix, UserDir,
+			    URL = str:join([GetPrefix, UserDir, PurposeDir,
 					    RandDir, FileName], <<$/>>),
 			    ThumbEl = thumb_el(OutMediaInfo, URL),
 			    {ok,
@@ -1053,8 +1066,10 @@ do_store_file(Path, Request, FileMode, DirMode) ->
 	end,
 	if is_integer(DirMode) ->
 		RandDir = filename:dirname(Path),
-		UserDir = filename:dirname(RandDir),
+		PurposeDir = filename:dirname(RandDir),
+		UserDir = filename:dirname(PurposeDir),
 		ok = file:change_mode(RandDir, DirMode),
+		ok = file:change_mode(PurposeDir, DirMode),
 		ok = file:change_mode(UserDir, DirMode);
 	   DirMode == undefined ->
 		ok
