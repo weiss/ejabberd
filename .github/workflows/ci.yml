@@ -98,7 +98,6 @@ jobs:
         shellcheck rel/setup-relive.sh
         shellcheck test/ejabberd_SUITE_data/gencerts.sh
         shellcheck tools/captcha.sh
-        shellcheck tools/dl_invites_page_deps.sh
         shellcheck tools/emacs-indent.sh
         shellcheck tools/generate-doap.sh
         shellcheck tools/prepare-tr.sh
