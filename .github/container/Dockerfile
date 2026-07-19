@@ -33,7 +33,6 @@ RUN apk -U add --no-cache \
         libpng-dev \
         libwebp-dev \
         linux-pam-dev \
-        npm \
         openssl-dev \
         sqlite-dev \
         yaml-dev \

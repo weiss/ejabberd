@@ -3,36 +3,32 @@
 {% block rel_alternate %}<link rel="alternate" href="{{ uri }}">{% endblock %}
 
 {% block qr_button %}
-        <div id="qr-button-container" class="float-end w-25 border border-info p-3 ms-3 d-none">
+        <aside id="qr-button-container" class="qr-button" hidden>
           {% trans "<strong>Tip:</strong> You can open this invite on your mobile device by scanning a barcode with your camera." %}
-          <button id="qr-modal-show" class="mt-2 mx-auto d-block btn btn-info" title="{% trans "Send this invite to your device" %}"
-              data-bs-toggle="modal" data-bs-target="#qr-modal" tabindex="1">
+          <button type="button" class="secondary" data-dialog-open="qr-modal"
+              title="{% trans "Send this invite to your device" %}" tabindex="1">
             {% trans "Scan with mobile device" %}
           </button>
-        </div>
+        </aside>
 {% endblock %}
 
 {% block qr_code %}
-    <div class="modal" tabindex="-1" role="dialog" id="qr-modal">
-      <div class="modal-dialog" role="document">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h1 class="modal-title h5">{% trans "Scan invite code" %}</h1>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p>{% trans "You can transfer this invite to your mobile device by scanning a code with your camera." %}</p>
-            <div id="qr-info-url" class="tab-pane show active">
-              <p>{% trans "Use a <em>QR code</em> scanner on your mobile device to scan the code below:" %}</p>
-              <div id="qr-invite-page" class="bg-light mx-auto"></div>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" data-bs-dismiss="modal" tabindex="2">{% trans "Close" %}</button>
-          </div>
+    <dialog id="qr-modal" aria-labelledby="qr-modal-title">
+      <article>
+        <header>
+          <form method="dialog"><button class="close" aria-label="{% trans "Close" %}" type="submit">&times;</button></form>
+          <h2 id="qr-modal-title">{% trans "Scan invite code" %}</h2>
+        </header>
+        <div class="body">
+          <p>{% trans "You can transfer this invite to your mobile device by scanning a code with your camera." %}</p>
+          <p>{% trans "Use a <em>QR code</em> scanner on your mobile device to scan the code below:" %}</p>
+          <div id="qr-invite-page" class="qr-canvas"></div>
         </div>
-      </div>
-    </div>
+        <footer>
+          <form method="dialog"><button type="submit" tabindex="2">{% trans "Close" %}</button></form>
+        </footer>
+      </article>
+    </dialog>
 {% endblock %}
 
 {% block extra_scripts %}
