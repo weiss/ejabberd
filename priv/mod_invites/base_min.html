@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{% trans "Invite" %} | {{ site_name }}{% endblock %}</title>
     {% block rel_alternate %}{% endblock %}
-    <link rel="stylesheet" href="{{ static }}/invite.css" integrity="sha384-2skhvi8EEp4Ct1XkkbHqiVzAQ3XdgFoAPKN4ls+r42UYZPbyv+RkoV57Foz8Q50d">
+    <link rel="stylesheet" href="{{ static }}/invite.css">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ static }}/favicon.png">
     <meta name="msapplication-TileColor" content="#4acac3">
     <meta name="theme-color" content="#4acac3">
@@ -24,6 +24,6 @@
     </main>
     {% block qr_code %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
-    <script src="{{ static }}/invite.js" integrity="sha384-37wNYlZUOGmdwufir4JKj0spppVScDloG5z7uAzsU5nZs/rXeKNNrDsGmrRvfMhR"></script>
+    <script src="{{ static }}/invite.js"></script>
   </body>
 </html>
