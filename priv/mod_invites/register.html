@@ -27,7 +27,7 @@
             <div class="field">
                 <label for="user">{% trans "Username" %}:</label>
                 <div class="input-suffix">
-                    <input type="text" name="user" id="user" tabindex="1" required autofocus
+                    <input type="text" name="user" id="user" required autofocus
                            minlength="1" maxlength="30"
                            {% if error.class == 'username' %}aria-invalid="true"{% endif %}
                            {% if username %}value="{{ username }}"{% endif %}>
@@ -38,7 +38,7 @@
             </div>
             <div class="field">
                 <label for="password">{% trans "Password" %}:</label>
-                <input type="password" name="password" id="password" tabindex="2"
+                <input type="password" name="password" id="password"
                        autocomplete="new-password" required minlength="{{ password_min_length }}"
                        {% if error.class == 'password' %}aria-invalid="true"{% endif %}>
                 {% if error.class == 'password' %}<small class="error-feedback">{{ error.text }}</small>{% endif %}
@@ -48,12 +48,12 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% if app %}<input type="hidden" name="app_id" value="{{ app.id }}">{% endif %}
             <div class="text-end">
-                <button type="submit" tabindex="3">{% trans "Submit" %}</button>
+                <button type="submit">{% trans "Submit" %}</button>
             </div>
         </form>
         <nav aria-label="{% trans 'Page navigation' %}">
             <ul class="pager">
-                <li><a tabindex="4" href="/{{ base }}/{{ token }}" aria-label="{% trans 'Previous' %}">&laquo; {% trans "Previous" %}</a></li>
+                <li><a href="/{{ base }}/{{ token }}" aria-label="{% trans 'Previous' %}">&laquo; {% trans "Previous" %}</a></li>
             </ul>
         </nav>
 {% endblock %}

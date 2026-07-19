@@ -26,7 +26,7 @@
 
       <nav aria-label="{% trans 'Page navigation' %}">
           <ul class="pager">
-              <li><a tabindex="4" href="/{{ base }}/" aria-label="{% trans 'Previous' %}">&laquo; {% trans "Previous" %}</a></li>
+              <li><a href="/{{ base }}/" aria-label="{% trans 'Previous' %}">&laquo; {% trans "Previous" %}</a></li>
           </ul>
       </nav>
       {% else %}
@@ -35,7 +35,7 @@
             <div class="field">
                 <label for="user">{% trans "Username" %}:</label>
                 <div class="input-suffix">
-                    <input type="text" name="user" id="user" tabindex="1" required autofocus
+                    <input type="text" name="user" id="user" required autofocus
                            minlength="1" maxlength="30"
                            {% if error.class == 'username' %}aria-invalid="true"{% endif %}
                            {% if username %}value="{{ username }}"{% endif %}>
@@ -46,7 +46,7 @@
             </div>
             <div class="field">
                 <label for="password">{% trans "Password" %}:</label>
-                <input type="password" name="password" id="password" tabindex="2" required
+                <input type="password" name="password" id="password" required
                        {% if error.class == 'password' %}aria-invalid="true"{% endif %}>
                 {% if error.class == 'password' %}<small class="error-feedback">{{ error.text }}</small>{% endif %}
                 <small class="hint">{% trans "Enter the corresponding password." %}</small>
@@ -56,7 +56,7 @@
                 <div class="field">
                     <label for="account_name">{% trans "Suggested Name" %}:</label>
                     <div class="input-suffix">
-                        <input type="text" name="account_name" id="account_name" tabindex="3" minlength="1" maxlength="30"
+                        <input type="text" name="account_name" id="account_name" minlength="1" maxlength="30"
                                {% if error.class == 'account_name' %}aria-invalid="true"{% endif %}>
                         <span class="suffix">@{{ domain }}</span>
                     </div>
@@ -64,14 +64,14 @@
                     <small class="hint">{% trans "You can suggest a username for the account to be created with this invite." %}</small>
                 </div>
                 <div class="checkbox">
-                    <input type="checkbox" id="subscribe" name="subscribe" value="yes" tabindex="4">
+                    <input type="checkbox" id="subscribe" name="subscribe" value="yes">
                     <label for="subscribe">{% trans "Add to contact list" %}</label>
                 </div>
                 <small class="hint">{% trans "If checked once an account is created using this invite, it will automatically be added to your contact list." %}</small>
             </fieldset>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="text-end">
-                <button type="submit" tabindex="5">{% trans "Submit" %}</button>
+                <button type="submit">{% trans "Submit" %}</button>
             </div>
         </form>
         {% endif %}

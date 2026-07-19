@@ -32,12 +32,12 @@
         <div class="ms-md">
             {% for button in app.download.buttons %}
             {% if button.image %}
-            <a href="{% if button.magic_link %}{{ button.magic_link }}{% else %}{{ button.url }}{% endif %}" {% if button.target %}target="{{ button.target }}"{% endif %} rel="noopener" tabindex="3">
+            <a href="{% if button.magic_link %}{{ button.magic_link }}{% else %}{{ button.url }}{% endif %}" {% if button.target %}target="{{ button.target }}"{% endif %} rel="noopener">
                 <img src="{{ button.image }}" {% if button.alttext %}alt="{{ button.alttext }}"{% endif %} class="invite-download-button">
             </a>
             {% endif %}
             {% if button.text %}
-            <a href="{{ button.url }}" {% if button.target %}target="{{ button.target }}"{% endif %} class="button" rel="noopener" tabindex="4">{{ button.text }}</a>
+            <a href="{{ button.url }}" {% if button.target %}target="{{ button.target }}"{% endif %} class="button" rel="noopener">{{ button.text }}</a>
             {% endif %}
             {% endfor %}
         </div>
@@ -48,13 +48,13 @@
         <p>{% trans "Installed ok? Great! <strong>Click or tap the button below</strong> to accept your invite and continue with your account setup:" %}</p>
 
         <p class="ms-md">
-            <a href="{{ uri }}" id="uri-cta" class="button success" tabindex="5">{% blocktrans with app_name=app.name %}Accept invite using {{ app_name }}{% endblocktrans %}</a>
+            <a href="{{ uri }}" id="uri-cta" class="button success">{% blocktrans with app_name=app.name %}Accept invite using {{ app_name }}{% endblocktrans %}</a>
         </p>
 
         <p>{% blocktrans with app_name=app.name %}After clicking the button you will be taken to {{ app_name }} to finish setting up your new {{ site_name }} account.{% endblocktrans %}</p>
         <nav aria-label="{% trans 'Page navigation' %}">
             <ul class="pager">
-                <li><a tabindex="6" href="/{{ base }}/{{ token }}" aria-label="{% trans 'Previous' %}">&laquo; {% trans "Previous" %}</a></li>
+                <li><a href="/{{ base }}/{{ token }}" aria-label="{% trans 'Previous' %}">&laquo; {% trans "Previous" %}</a></li>
             </ul>
         </nav>
 {% endblock %}

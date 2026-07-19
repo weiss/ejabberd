@@ -9,12 +9,12 @@
                             {% for platform in item.platforms %}<span class="badge badge-info client-platform-badge client-platform-badge-{{ platform|lower }}">{{ platform }}</span>{% endfor %}
                         </div>
                         <p>{{ item.text }}</p>
-                        <a href="{{ item.proceed_url }}" class="button" tabindex="{{ forloop.counter|add:2 }}">{% if item.select_text %}{{ item.select_text }}{% else %}{% trans "Select" %}{% endif %}</a>
+                        <a href="{{ item.proceed_url }}" class="button">{% if item.select_text %}{{ item.select_text }}{% else %}{% trans "Select" %}{% endif %}</a>
                     </div>
                 </div>
             </article>
             {% endfor %}
         </div>
         <aside id="show-all-clients-button-container" class="callout callout-info" hidden>
-            {% blocktrans with tabidx=apps|length|add:2 %}Showing apps for <span class='platform-name'>your current platform</span> only. You may also <a href='#' id='show-all-clients-button' tabindex="{{ tabidx }}">view all apps.</a>{% endblocktrans %}
+            {% blocktrans %}Showing apps for <span class='platform-name'>your current platform</span> only. You may also <a href='#' id='show-all-clients-button'>view all apps.</a>{% endblocktrans %}
         </aside>

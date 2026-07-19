@@ -6,7 +6,7 @@
 {% block content %}
         <p>{% blocktrans with inviter=invite.inviter|jid %}This is an invite from <strong>{{ inviter }}</strong> to connect and chat on the XMPP network. If you already have an XMPP client installed just press the button below!{% endblocktrans %}</p>
         <p class="text-center">
-            <a href="{{ invite.uri }}" class="button success" tabindex="3">{% blocktrans with inviter=invite.inviter|user %}Add {{ inviter }} to your contact list{% endblocktrans %}</a>
+            <a href="{{ invite.uri }}" class="button success">{% blocktrans with inviter=invite.inviter|user %}Add {{ inviter }} to your contact list{% endblocktrans %}</a>
         </p>
         <aside class="callout callout-info">
             <strong>{% trans 'Hint' %}:</strong> {% trans "If you don't have an XMPP client installed yet, here's a list of suitable clients for your platform." %}
